@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// === IDENTITY & ACCESS ===
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  passwordHash  String
+  displayName   String
+  role          Role         @default(MEMBER)
+  status        UserStatus   @default(ACTIVE)
+  avatarUrl     String?
+  phone         String?
+  invitedBy     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  media         Media[]
+  auditLogs     AuditLog[]   @relation("actor")
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model InviteLink {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  role      Role      @default(MEMBER)
+  maxUses   Int       @default(1)
+  usedCount Int       @default(0)
+  expiresAt DateTime?
+  createdBy String
+  createdAt DateTime  @default(now())
+
+  @@map("invite_links")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  ARCHIVIST
+  MEMBER
+  GUEST
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+// === MEDIA & ARCHIVE ===
+
+model Media {
+  id              String     @id @default(cuid())
+  fileKey         String     // S3 object key
+  fileName        String
+  mimeType        String
+  fileSize        Int
+  title           String?
+  description     String?
+  date            DateTime?
+  linkedPersonId  String?    // Gramps person handle
+  linkedEventType String?    // birth, death, marriage...
+  state           MediaState @default(PENDING)
+  uploaderId      String
+  uploader        User       @relation(fields: [uploaderId], references: [id])
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@map("media")
+}
+
+enum MediaState {
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+// === AUDIT LOG ===
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  actor       User     @relation("actor", fields: [actorId], references: [id])
+  action      String   // CREATE, UPDATE, DELETE, EXPORT, LOGIN...
+  entityType  String   // user, person, media, family...
+  entityId    String?
+  diffSummary Json?    // { field: { old, new } }
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// === PRIVACY CONFIG ===
+
+model PrivacyConfig {
+  id                String   @id @default(cuid())
+  hideLivingDetails Boolean  @default(true)
+  memberCanSee      Json     // ["name", "birthYear"]
+  editorCanSee      Json     // ["name", "birthYear", "birthDate", "phone"]
+  adminCanSee       Json     // ["*"]
+  updatedAt         DateTime @updatedAt
+
+  @@map("privacy_configs")
+}
+
+// === BACKUP ===
+
+model BackupRecord {
+  id        String   @id @default(cuid())
+  type      String   // GEDCOM, DB_SNAPSHOT
+  fileKey   String   // S3 key
+  fileSize  Int
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@map("backup_records")
+}

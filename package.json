@@ -1,0 +1,34 @@
+{
+  "name": "clanhub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ClanHub — Nền tảng gia phả & cộng đồng dòng họ",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:be\" \"npm run dev:fe\"",
+    "dev:be": "cd backend && npm run dev",
+    "dev:fe": "cd frontend && npm run dev",
+    "build": "npm run build:be && npm run build:fe",
+    "build:be": "cd backend && npm run build",
+    "build:fe": "cd frontend && npm run build",
+    "lint": "npm run lint:be && npm run lint:fe",
+    "lint:be": "cd backend && npm run lint",
+    "lint:fe": "cd frontend && npm run lint",
+    "test": "npm run test:be && npm run test:fe",
+    "test:be": "cd backend && npm test",
+    "test:fe": "cd frontend && npm test",
+    "db:migrate": "cd backend && npx prisma migrate dev",
+    "db:generate": "cd backend && npx prisma generate",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:build": "docker compose build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.22.0",
+    "@typescript-eslint/parser": "^8.22.0",
+    "eslint": "^9.19.0",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

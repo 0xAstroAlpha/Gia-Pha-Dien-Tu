@@ -1,0 +1,52 @@
+# Sprint Status — ClanHub Phase 1
+# generated: 2026-02-19
+# project: ClanHub (GiaPhaHub)
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: "_bmad-output/implementation-artifacts"
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic: backlog | in-progress | done
+# Story: backlog | ready-for-dev | in-progress | review | done
+
+development_status:
+  epic-0: done
+  0-1-initialize-monorepo: done
+  0-2-setup-backend-express-prisma: done
+  0-3-setup-frontend-nextjs-shadcn: done
+  0-4-docker-compose-full-stack: done
+  epic-0-retrospective: optional
+
+  epic-1: done
+  1-1-user-registration-invite: done
+  1-2-login-logout-token-refresh: done
+  1-3-forgot-reset-password: done
+  1-4-rbac-middleware: done
+  1-5-admin-user-management-invite: done
+  1-6-frontend-auth-pages-layout: done
+  1-7-frontend-admin-users-page: done
+  epic-1-retrospective: optional
+
+  epic-2: done
+  2-1-genealogy-proxy-module: done
+  2-2-privacy-filter-living-persons: done
+  2-3-frontend-tree-view: done
+  2-4-frontend-people-list: done
+  2-5-frontend-person-profile: done
+  epic-2-retrospective: optional
+
+  epic-3: done
+  3-1-media-upload-api: done
+  3-2-media-approval-workflow: done
+  3-3-signed-url-media-access: done
+  3-4-frontend-media-library: done
+  3-5-frontend-pending-queue: done
+  epic-3-retrospective: optional
+
+  epic-4: done
+  4-1-audit-log-api: done
+  4-2-backup-restore-api: done
+  4-3-frontend-audit-page: done
+  4-4-frontend-backup-page: done
+  epic-4-retrospective: optional

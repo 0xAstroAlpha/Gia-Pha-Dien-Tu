@@ -1,0 +1,155 @@
+# ClanHub — Docker Compose (Development)
+# Usage: docker compose up -d
+
+services:
+  # === PostgreSQL ===
+  postgres:
+    image: postgres:16-alpine
+    container_name: clanhub-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: clanhub
+      POSTGRES_PASSWORD: clanhub_secret
+      POSTGRES_DB: clanhub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clanhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === MinIO (S3-compatible storage) ===
+  minio:
+    image: minio/minio:latest
+    container_name: clanhub-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"      # API
+      - "9001:9001"      # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === MinIO bucket init ===
+  minio-init:
+    image: minio/mc:latest
+    container_name: clanhub-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb local/clanhub-media --ignore-existing;
+      exit 0;
+      "
+
+  # === Gramps Web ===
+  grampsweb:
+    image: ghcr.io/gramps-project/grampsweb:latest
+    container_name: clanhub-grampsweb
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      GRAMPSWEB_TREE: "ClanHub"
+      GRAMPSWEB_SECRET_KEY: grampsweb-dev-secret
+    volumes:
+      - gramps_data:/app/data
+      - gramps_media:/app/media
+      - gramps_tmp:/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/metadata"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # === Backend API ===
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    container_name: clanhub-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://clanhub:clanhub_secret@postgres:5432/clanhub
+      JWT_SECRET: dev-jwt-secret-change-in-prod
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-prod
+      GRAMPS_WEB_URL: http://grampsweb:5000
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: clanhub-media
+      CORS_ORIGIN: http://localhost:3000
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # === Frontend ===
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    container_name: clanhub-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      NEXT_PUBLIC_APP_NAME: ClanHub
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend
+
+  # === Caddy (Reverse Proxy) ===
+  caddy:
+    image: caddy:2-alpine
+    container_name: clanhub-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  postgres_data:
+  minio_data:
+  gramps_data:
+  gramps_media:
+  gramps_tmp:
+  caddy_data:
+  caddy_config:
