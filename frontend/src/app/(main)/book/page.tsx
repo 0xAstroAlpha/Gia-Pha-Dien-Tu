@@ -114,19 +114,23 @@ export default function BookPage() {
     }
     if (!bookData) return null;
 
-    // Paginate chapters: 2-col layout, first page ~6 members (header takes space), continuation ~8
-    const FIRST_PAGE_LIMIT = 6;
-    const CONT_PAGE_LIMIT = 8;
+    // Paginate chapters: 2-col layout, optimized for A4 (297mm) pages
+    const FIRST_PAGE_LIMIT = 10;  // first page has header, fits ~10 members
+    const CONT_PAGE_LIMIT = 14;   // continuation pages fit ~14 members
+    const APPENDIX_PAGE_LIMIT = 50; // ~50 name entries per appendix page (2-col)
 
     interface Section {
         id: string;
         label: string;
         pageNum: number;
-        // For paginated chapters:
         chapterGen?: number;
         memberStart?: number;
         memberEnd?: number;
         isFirstPage?: boolean;
+        // For appendix pagination:
+        appendixStart?: number;
+        appendixEnd?: number;
+        appendixIsFirst?: boolean;
     }
 
     const sections: Section[] = [
@@ -138,7 +142,6 @@ export default function BookPage() {
     for (const ch of bookData.chapters) {
         const total = ch.members.length;
         if (total <= FIRST_PAGE_LIMIT) {
-            // Single page
             sections.push({
                 id: `gen-${ch.generation}`,
                 label: `Đời ${ch.romanNumeral}`,
@@ -149,7 +152,6 @@ export default function BookPage() {
                 isFirstPage: true,
             });
         } else {
-            // Multi-page: first page gets header + FIRST_PAGE_LIMIT members
             let start = 0;
             let pageIdx = 0;
             while (start < total) {
@@ -170,7 +172,31 @@ export default function BookPage() {
         }
     }
 
-    sections.push({ id: 'appendix', label: 'Phụ lục', pageNum: pageCounter++ });
+    // Paginate appendix: split all name entries across multiple pages
+    const allNames = bookData.nameIndex;
+    const totalNames = allNames.length;
+    if (totalNames <= APPENDIX_PAGE_LIMIT) {
+        sections.push({ id: 'appendix', label: 'Phụ lục', pageNum: pageCounter++, appendixStart: 0, appendixEnd: totalNames, appendixIsFirst: true });
+    } else {
+        let aStart = 0;
+        let aPage = 0;
+        while (aStart < totalNames) {
+            // First appendix page has header, so fewer entries
+            const limit = aPage === 0 ? APPENDIX_PAGE_LIMIT - 10 : APPENDIX_PAGE_LIMIT;
+            const aEnd = Math.min(aStart + limit, totalNames);
+            sections.push({
+                id: aPage === 0 ? 'appendix' : `appendix-p${aPage}`,
+                label: aPage === 0 ? 'Phụ lục' : `Phụ lục (tt${aPage + 1})`,
+                pageNum: pageCounter++,
+                appendixStart: aStart,
+                appendixEnd: aEnd,
+                appendixIsFirst: aPage === 0,
+            });
+            aStart = aEnd;
+            aPage++;
+        }
+    }
+
     sections.push({ id: 'closing', label: 'Kết sách', pageNum: pageCounter++ });
 
     return (
@@ -273,7 +299,8 @@ export default function BookPage() {
                                             style={{ transform: `scale(${previewScale})` }}
                                         >
                                             <BookSection sectionId={s.id} bookData={bookData} theme={t}
-                                                memberStart={s.memberStart} memberEnd={s.memberEnd} isFirstPage={s.isFirstPage} />
+                                                memberStart={s.memberStart} memberEnd={s.memberEnd} isFirstPage={s.isFirstPage}
+                                                appendixStart={s.appendixStart} appendixEnd={s.appendixEnd} appendixIsFirst={s.appendixIsFirst} />
                                         </div>
                                     </div>
                                     <div className="px-3 py-2 border-t text-xs font-medium" style={{ color: t.primary }}>
@@ -355,15 +382,20 @@ export default function BookPage() {
 }
 
 // ═══ BookSection — renders a single section for preview gallery ═══
-function BookSection({ sectionId, bookData, theme: t, memberStart, memberEnd, isFirstPage }: {
+function BookSection({ sectionId, bookData, theme: t, memberStart, memberEnd, isFirstPage, appendixStart, appendixEnd, appendixIsFirst }: {
     sectionId: string; bookData: BookData; theme: Theme;
     memberStart?: number; memberEnd?: number; isFirstPage?: boolean;
+    appendixStart?: number; appendixEnd?: number; appendixIsFirst?: boolean;
 }) {
     return (
         <div className="book-content px-12 py-12" style={{ fontFamily: "'Noto Serif', Georgia, serif", color: t.text }}>
             {sectionId === 'cover' && <CoverPage bookData={bookData} theme={t} />}
             {sectionId === 'toc' && <TocContent bookData={bookData} theme={t} />}
-            {sectionId === 'appendix' && <AppendixContent bookData={bookData} theme={t} />}
+            {(sectionId === 'appendix' || sectionId.startsWith('appendix-')) && (
+                <AppendixContent bookData={bookData} theme={t}
+                    startIdx={appendixStart ?? 0} endIdx={appendixEnd ?? bookData.nameIndex.length}
+                    showHeader={appendixIsFirst !== false} />
+            )}
             {sectionId === 'closing' && <ClosingContent bookData={bookData} theme={t} />}
             {sectionId.startsWith('gen-') && (() => {
                 const genStr = sectionId.replace('gen-', '').split('-')[0];
@@ -535,42 +567,74 @@ function PersonEntry({ person, index, theme: t }: { person: BookPerson; index: n
     );
 }
 
-function AppendixContent({ bookData, theme: t }: { bookData: BookData; theme: Theme }) {
+function AppendixContent({ bookData, theme: t, startIdx, endIdx, showHeader }: {
+    bookData: BookData; theme: Theme;
+    startIdx?: number; endIdx?: number; showHeader?: boolean;
+}) {
     const patrilineal = bookData.nameIndex.filter(e => e.isPatrilineal);
     const ngoaitoc = bookData.nameIndex.filter(e => !e.isPatrilineal);
+    // Combined sorted list for pagination
+    const allEntries = [...patrilineal, ...ngoaitoc];
+    const start = startIdx ?? 0;
+    const end = endIdx ?? allEntries.length;
+    const pageEntries = allEntries.slice(start, end);
+
+    // Determine section boundaries
+    const patriEnd = patrilineal.length;
+    const showPatriHeader = start < patriEnd;
+    const showNgoaiHeader = end > patriEnd && start < allEntries.length;
+
     return (
         <>
-            <h2 className="text-2xl font-bold text-center font-serif mb-2 tracking-wide" style={{ color: t.primary }}>
-                PHỤ LỤC
-            </h2>
-            <p className="text-center font-serif mb-8" style={{ color: t.textMuted }}>Chỉ mục tên theo thứ tự A-Z</p>
-            <div className="w-16 h-0.5 mx-auto mb-10" style={{ background: t.primary }} />
+            {showHeader !== false && (
+                <>
+                    <h2 className="text-2xl font-bold text-center font-serif mb-2 tracking-wide" style={{ color: t.primary }}>
+                        PHỤ LỤC
+                    </h2>
+                    <p className="text-center font-serif mb-6" style={{ color: t.textMuted }}>Chỉ mục tên theo thứ tự A-Z</p>
+                    <div className="w-16 h-0.5 mx-auto mb-8" style={{ background: t.primary }} />
+                </>
+            )}
+            {showHeader === false && (
+                <p className="text-xs mb-6 font-serif italic" style={{ color: t.textMuted }}>
+                    Phụ lục (tiếp theo)
+                </p>
+            )}
 
-            <h3 className="text-base font-bold font-serif mb-4 tracking-wide pb-2"
-                style={{ color: t.primary, borderBottom: `1px solid ${t.border}` }}>
-                NỘI TỘC — Dòng họ {bookData.familyName} ({patrilineal.length} người)
-            </h3>
-            <div className="columns-2 gap-8 text-sm font-serif mb-10">
-                {patrilineal.map((entry, i) => (
-                    <div key={`p-${i}`} className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
-                        <span className="font-semibold" style={{ color: t.primary }}>{entry.name}</span>
-                        <span className="flex-1 border-b border-dotted mx-1" style={{ borderColor: t.borderLight }} />
-                        <span className="text-xs" style={{ color: t.textMuted }}>Đời {entry.generation + 1}</span>
-                    </div>
-                ))}
-            </div>
+            {/* Render entries with section headers inline */}
+            {showPatriHeader && start === 0 && (
+                <h3 className="text-base font-bold font-serif mb-3 tracking-wide pb-2"
+                    style={{ color: t.primary, borderBottom: `1px solid ${t.border}` }}>
+                    NỘI TỘC — Dòng họ {bookData.familyName} ({patrilineal.length} người)
+                </h3>
+            )}
 
-            <h3 className="text-base font-bold font-serif mb-4 tracking-wide pb-2 text-stone-600 border-b border-stone-300">
-                NGOẠI TỘC — Thân thuộc ({ngoaitoc.length} người)
-            </h3>
-            <div className="columns-2 gap-8 text-sm font-serif">
-                {ngoaitoc.map((entry, i) => (
-                    <div key={`n-${i}`} className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
-                        <span className="text-stone-600">{entry.name}</span>
-                        <span className="flex-1 border-b border-dotted border-stone-200 mx-1" />
-                        <span className="text-stone-400 text-xs">Đời {entry.generation + 1}</span>
-                    </div>
-                ))}
+            <div className="columns-2 gap-6 text-sm font-serif">
+                {pageEntries.map((entry, i) => {
+                    const globalIdx = start + i;
+                    const isNgoaiStart = globalIdx === patriEnd;
+                    return (
+                        <div key={`e-${globalIdx}`}>
+                            {isNgoaiStart && (
+                                <h3 className="text-base font-bold font-serif mb-3 mt-6 tracking-wide pb-2 text-stone-600 border-b border-stone-300 break-before-column">
+                                    NGOẠI TỘC — Thân thuộc ({ngoaitoc.length} người)
+                                </h3>
+                            )}
+                            <div className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
+                                <span className={globalIdx < patriEnd ? 'font-semibold' : 'text-stone-600'}
+                                    style={globalIdx < patriEnd ? { color: t.primary } : undefined}>
+                                    {entry.name}
+                                </span>
+                                <span className="flex-1 border-b border-dotted mx-1"
+                                    style={{ borderColor: globalIdx < patriEnd ? t.borderLight : '#d6d3d1' }} />
+                                <span className="text-xs"
+                                    style={{ color: globalIdx < patriEnd ? t.textMuted : '#a8a29e' }}>
+                                    Đời {entry.generation + 1}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </>
     );
