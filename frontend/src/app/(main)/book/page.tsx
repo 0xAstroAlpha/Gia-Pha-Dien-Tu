@@ -452,7 +452,7 @@ function CoverPage({ bookData, theme: t }: { bookData: BookData; theme: Theme })
             </div>
             <div className="text-sm font-serif" style={{ color: t.textMuted }}>
                 <p>Xuất bản ngày {bookData.exportDate}</p>
-                <p className="mt-1">Gia phả dòng họ Lê Huy</p>
+                <p className="mt-1">Gia phả dòng họ {bookData.familyName}</p>
             </div>
         </section>
     );
