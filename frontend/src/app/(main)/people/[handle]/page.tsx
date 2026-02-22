@@ -31,7 +31,28 @@ export default function PersonProfilePage() {
                     .eq('handle', handle)
                     .single();
                 if (!error && data) {
-                    setPerson(data as PersonDetail);
+                    // Convert snake_case DB row → camelCase PersonDetail
+                    const row = data as Record<string, unknown>;
+                    setPerson({
+                        handle: row.handle as string,
+                        displayName: row.display_name as string,
+                        gender: row.gender as number,
+                        birthYear: row.birth_year as number | undefined,
+                        deathYear: row.death_year as number | undefined,
+                        generation: row.generation as number,
+                        isLiving: row.is_living as boolean,
+                        isPrivacyFiltered: row.is_privacy_filtered as boolean,
+                        isPatrilineal: row.is_patrilineal as boolean,
+                        families: (row.families as string[]) || [],
+                        parentFamilies: (row.parent_families as string[]) || [],
+                        phone: row.phone as string | undefined,
+                        email: row.email as string | undefined,
+                        currentAddress: row.current_address as string | undefined,
+                        hometown: row.hometown as string | undefined,
+                        occupation: row.occupation as string | undefined,
+                        education: row.education as string | undefined,
+                        notes: row.notes as string | undefined,
+                    } as PersonDetail);
                     setLoading(false);
                     return;
                 }

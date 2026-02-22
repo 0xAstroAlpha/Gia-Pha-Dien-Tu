@@ -15,6 +15,7 @@ import {
     moveChildToFamily as supaMoveChild,
     removeChildFromFamily as supaRemoveChild,
     updatePersonLiving as supaUpdatePersonLiving,
+    updatePerson as supaUpdatePerson,
 } from '@/lib/supabase-data';
 import {
     computeLayout, filterAncestors, filterDescendants,
@@ -998,6 +999,16 @@ export default function TreeViewPage() {
                             } : null);
                             supaUpdatePersonLiving(handle, isLiving);
                         }}
+                        onUpdatePerson={(handle, fields) => {
+                            setTreeData(prev => {
+                                if (!prev) return null;
+                                return {
+                                    ...prev,
+                                    people: prev.people.map(p => p.handle === handle ? { ...p, ...fields } : p)
+                                };
+                            });
+                            supaUpdatePerson(handle, fields);
+                        }}
                         onReset={async () => {
                             const data = await fetchTreeData();
                             setTreeData(data);
@@ -1465,19 +1476,37 @@ function StatsOverlay({ stats, onClose }: { stats: TreeStats; onClose: () => voi
 }
 
 // === Editor Panel Component ===
-function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, onRemoveChild, onToggleLiving, onReset, onClose }: {
+function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, onRemoveChild, onToggleLiving, onUpdatePerson, onReset, onClose }: {
     selectedCard: string | null;
     treeData: { people: TreeNode[]; families: TreeFamily[] } | null;
     onReorderChildren: (familyHandle: string, newOrder: string[]) => void;
     onMoveChild: (childHandle: string, fromFamily: string, toFamily: string) => void;
     onRemoveChild: (childHandle: string, familyHandle: string) => void;
     onToggleLiving: (handle: string, isLiving: boolean) => void;
+    onUpdatePerson: (handle: string, fields: Record<string, unknown>) => void;
     onReset: () => void;
     onClose: () => void;
 }) {
+    const [editName, setEditName] = useState('');
+    const [editBirthYear, setEditBirthYear] = useState('');
+    const [editDeathYear, setEditDeathYear] = useState('');
+    const [dirty, setDirty] = useState(false);
+    const [saving, setSaving] = useState(false);
+
     if (!treeData) return null;
 
     const person = selectedCard ? treeData.people.find(p => p.handle === selectedCard) : null;
+
+    // Sync local state when selection changes
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+        if (person) {
+            setEditName(person.displayName || '');
+            setEditBirthYear(person.birthYear?.toString() || '');
+            setEditDeathYear(person.deathYear?.toString() || '');
+            setDirty(false);
+        }
+    }, [person?.handle]);
 
     // Find the family where this person is a parent
     const parentFamily = person
@@ -1501,6 +1530,22 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
 
     // All families (for "change parent" dropdown)
     const allParentFamilies = treeData.families.filter(f => f.fatherHandle || f.motherHandle);
+
+    const handleSave = async () => {
+        if (!person || !dirty) return;
+        setSaving(true);
+        const fields: Record<string, unknown> = {};
+        if (editName !== person.displayName) fields.displayName = editName;
+        const newBirth = editBirthYear ? parseInt(editBirthYear) : null;
+        if (newBirth !== (person.birthYear ?? null)) fields.birthYear = newBirth;
+        const newDeath = editDeathYear ? parseInt(editDeathYear) : null;
+        if (newDeath !== (person.deathYear ?? null)) fields.deathYear = newDeath;
+        if (Object.keys(fields).length > 0) {
+            onUpdatePerson(person.handle, fields);
+        }
+        setDirty(false);
+        setSaving(false);
+    };
 
     return (
         <div className="w-72 bg-background border-l flex flex-col overflow-hidden flex-shrink-0">
@@ -1528,18 +1573,38 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                 </div>
             ) : (
                 <div className="flex-1 overflow-y-auto">
-                    {/* Selected person info */}
-                    <div className="p-3 border-b">
-                        <p className="font-semibold text-sm">{person.displayName}</p>
-                        <p className="text-xs text-muted-foreground">
-                            Đời {(person as any).generation ?? '?'} · {person.handle}
-                        </p>
+                    {/* Editable person info */}
+                    <div className="p-3 border-b space-y-2">
+                        <p className="text-xs text-muted-foreground">Đời {(person as any).generation ?? '?'} · {person.handle}</p>
                         {parentPerson && (
-                            <p className="text-xs text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground">
                                 Cha: <span className="font-medium text-foreground">{parentPerson.displayName}</span>
                             </p>
                         )}
-                        <div className="mt-2 flex items-center gap-2">
+
+                        {/* Editable Name */}
+                        <div>
+                            <label className="text-xs text-muted-foreground">Họ tên</label>
+                            <input className="w-full border rounded px-2 py-1 text-sm bg-background" value={editName}
+                                onChange={e => { setEditName(e.target.value); setDirty(true); }} />
+                        </div>
+
+                        {/* Birth / Death Year */}
+                        <div className="flex gap-2">
+                            <div className="flex-1">
+                                <label className="text-xs text-muted-foreground">Năm sinh</label>
+                                <input type="number" className="w-full border rounded px-2 py-1 text-sm bg-background" value={editBirthYear}
+                                    onChange={e => { setEditBirthYear(e.target.value); setDirty(true); }} placeholder="—" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-xs text-muted-foreground">Năm mất</label>
+                                <input type="number" className="w-full border rounded px-2 py-1 text-sm bg-background" value={editDeathYear}
+                                    onChange={e => { setEditDeathYear(e.target.value); setDirty(true); }} placeholder="—" />
+                            </div>
+                        </div>
+
+                        {/* Living status */}
+                        <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Trạng thái:</span>
                             <button
                                 className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${person.isLiving
@@ -1551,6 +1616,16 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                                 {person.isLiving ? '● Còn sống' : '○ Đã mất'}
                             </button>
                         </div>
+
+                        {/* Save button */}
+                        {dirty && (
+                            <button
+                                className="w-full flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                onClick={handleSave} disabled={saving}
+                            >
+                                <Save className="h-3.5 w-3.5" />{saving ? 'Đang lưu...' : 'Lưu thay đổi → Supabase'}
+                            </button>
+                        )}
                     </div>
 
                     {/* Children reorder */}

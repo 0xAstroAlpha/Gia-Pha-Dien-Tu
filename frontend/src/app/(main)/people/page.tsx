@@ -39,15 +39,23 @@ export default function PeopleListPage() {
     useEffect(() => {
         const fetchPeople = async () => {
             try {
-                // Fetch from Supabase people table
-                const { createClient } = await import('@supabase/supabase-js');
+                // Fetch from Supabase people table (snake_case columns)
                 const { supabase } = await import('@/lib/supabase');
                 const { data, error } = await supabase
                     .from('people')
-                    .select('handle, displayName, gender, birthYear, deathYear, isLiving, isPrivacyFiltered')
-                    .order('displayName', { ascending: true });
+                    .select('handle, display_name, gender, birth_year, death_year, is_living, is_privacy_filtered')
+                    .order('display_name', { ascending: true });
                 if (!error && data && data.length > 0) {
-                    setPeople(data);
+                    // Convert snake_case → camelCase for UI
+                    setPeople(data.map((row: Record<string, unknown>) => ({
+                        handle: row.handle as string,
+                        displayName: row.display_name as string,
+                        gender: row.gender as number,
+                        birthYear: row.birth_year as number | undefined,
+                        deathYear: row.death_year as number | undefined,
+                        isLiving: row.is_living as boolean,
+                        isPrivacyFiltered: row.is_privacy_filtered as boolean,
+                    })));
                     setLoading(false);
                     return;
                 }
