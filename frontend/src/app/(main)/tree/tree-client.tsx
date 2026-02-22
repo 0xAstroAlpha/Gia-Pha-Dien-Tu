@@ -1492,6 +1492,9 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     const [editDeathYear, setEditDeathYear] = useState('');
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [parentSearch, setParentSearch] = useState('');
+    const [showParentDropdown, setShowParentDropdown] = useState(false);
+    const parentSearchRef = useRef<HTMLDivElement>(null);
 
     if (!treeData) return null;
 
@@ -1505,8 +1508,22 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
             setEditBirthYear(person.birthYear?.toString() || '');
             setEditDeathYear(person.deathYear?.toString() || '');
             setDirty(false);
+            setParentSearch('');
+            setShowParentDropdown(false);
         }
     }, [person?.handle]);
+
+    // Close parent dropdown on outside click
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (parentSearchRef.current && !parentSearchRef.current.contains(e.target as Node)) {
+                setShowParentDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Find the family where this person is a parent
     const parentFamily = person
@@ -1528,8 +1545,22 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
         ? parentFamily.children.map(ch => treeData.people.find(p => p.handle === ch)).filter(Boolean) as TreeNode[]
         : [];
 
-    // All families (for "change parent" dropdown)
+    // All families (for "change parent" dropdown) with labels
     const allParentFamilies = treeData.families.filter(f => f.fatherHandle || f.motherHandle);
+    const parentFamiliesWithLabels = allParentFamilies.map(f => {
+        const father = treeData.people.find(p => p.handle === f.fatherHandle);
+        const gen = father ? (father as any).generation : '';
+        const label = father ? father.displayName : f.handle;
+        return { ...f, label, gen };
+    });
+
+    // Filter parent families by search term
+    const filteredParentFamilies = parentSearch.trim()
+        ? parentFamiliesWithLabels.filter(f =>
+            f.label.toLowerCase().includes(parentSearch.toLowerCase()) ||
+            f.handle.toLowerCase().includes(parentSearch.toLowerCase())
+        )
+        : parentFamiliesWithLabels;
 
     const handleSave = async () => {
         if (!person || !dirty) return;
@@ -1684,31 +1715,57 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                         </div>
                     )}
 
-                    {/* Change parent */}
+                    {/* Change parent — searchable */}
                     {childOfFamily && (
-                        <div className="p-3 border-b">
+                        <div className="p-3 border-b" ref={parentSearchRef}>
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                 Đổi cha
                             </p>
-                            <select
-                                className="w-full border rounded px-2 py-1 text-xs bg-background"
-                                value={childOfFamily.handle}
-                                onChange={e => {
-                                    if (e.target.value !== childOfFamily.handle) {
-                                        onMoveChild(person.handle, childOfFamily.handle, e.target.value);
-                                    }
-                                }}
-                            >
-                                {allParentFamilies.map(f => {
-                                    const father = treeData.people.find(p => p.handle === f.fatherHandle);
-                                    const label = father ? father.displayName : f.handle;
-                                    return (
-                                        <option key={f.handle} value={f.handle}>
-                                            {label} ({f.handle})
-                                        </option>
-                                    );
-                                })}
-                            </select>
+                            {/* Current parent display */}
+                            <p className="text-xs text-muted-foreground mb-1">
+                                Hiện tại: <span className="font-medium text-foreground">{parentPerson?.displayName ?? childOfFamily.handle}</span>
+                            </p>
+                            {/* Searchable input */}
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background placeholder:text-muted-foreground/60"
+                                    placeholder="🔍 Tìm cha mới..."
+                                    value={parentSearch}
+                                    onChange={e => { setParentSearch(e.target.value); setShowParentDropdown(true); }}
+                                    onFocus={() => setShowParentDropdown(true)}
+                                />
+                                {showParentDropdown && (
+                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded shadow-lg max-h-48 overflow-y-auto">
+                                        {filteredParentFamilies.length === 0 ? (
+                                            <div className="px-2 py-2 text-xs text-muted-foreground text-center">
+                                                Không tìm thấy
+                                            </div>
+                                        ) : (
+                                            filteredParentFamilies.map(f => {
+                                                const isSelected = f.handle === childOfFamily.handle;
+                                                return (
+                                                    <button
+                                                        key={f.handle}
+                                                        className={`w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-1 transition-colors ${isSelected ? 'bg-blue-100 font-semibold text-blue-700' : ''}`}
+                                                        onClick={() => {
+                                                            if (f.handle !== childOfFamily.handle) {
+                                                                onMoveChild(person.handle, childOfFamily.handle, f.handle);
+                                                            }
+                                                            setShowParentDropdown(false);
+                                                            setParentSearch('');
+                                                        }}
+                                                    >
+                                                        <span className="truncate flex-1">{f.label}</span>
+                                                        <span className="text-muted-foreground/60 shrink-0">Đ{f.gen}</span>
+                                                        {isSelected && <span className="text-blue-600 shrink-0">✓</span>}
+                                                    </button>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
