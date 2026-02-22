@@ -20,7 +20,7 @@ BEGIN
     VALUES (
         NEW.id,
         NEW.email,
-        CASE WHEN NEW.email = 'lhda.eth@gmail.com' THEN 'admin' ELSE 'viewer' END
+        CASE WHEN NEW.email = 'your-admin@example.com' THEN 'admin' ELSE 'viewer' END
     );
     RETURN NEW;
 END;
@@ -53,4 +53,4 @@ CREATE POLICY "admin_update_families" ON families FOR UPDATE
 CREATE POLICY "admin_delete_families" ON families FOR DELETE
     USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
-SELECT 'Auth schema created! Admin: lhda.eth@gmail.com' AS status;
+SELECT 'Auth schema created! Remember to update admin email in handle_new_user()' AS status;
