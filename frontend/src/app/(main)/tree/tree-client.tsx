@@ -22,6 +22,7 @@ import {
     CARD_W, CARD_H,
     type TreeNode, type TreeFamily, type LayoutResult, type PositionedNode, type PositionedCouple, type Connection,
 } from '@/lib/tree-layout';
+import { getMockTreeData } from '@/lib/mock-data';
 
 type ViewMode = 'full' | 'ancestor' | 'descendant';
 type ZoomLevel = 'full' | 'compact' | 'mini';
@@ -294,7 +295,8 @@ export default function TreeViewPage() {
                     return;
                 }
             } catch { /* fallback to mock */ }
-            setTreeData(null);
+            // Fallback: use bundled mock data (demo mode)
+            setTreeData(getMockTreeData());
             setLoading(false);
         };
         fetchTree();

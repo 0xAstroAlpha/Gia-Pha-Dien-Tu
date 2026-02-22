@@ -113,6 +113,18 @@ export function Sidebar() {
                 )}
             </nav>
 
+            {/* Contact info */}
+            {!collapsed && (
+                <div className="border-t px-4 py-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                        Setup cho dòng họ, liên hệ:<br />
+                        <span className="font-semibold text-foreground">Đức Anh</span> — 088 999 1120
+                        <br />
+                        <span className="text-[10px] opacity-60">(Phone Only)</span>
+                    </p>
+                </div>
+            )}
+
             {/* Collapse toggle */}
             <div className="border-t p-2">
                 <Button variant="ghost" size="sm" className="w-full" onClick={() => setCollapsed(!collapsed)}>
