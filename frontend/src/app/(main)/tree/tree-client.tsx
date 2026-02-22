@@ -339,13 +339,37 @@ export default function TreeViewPage() {
 
     // F4: Compute all hidden handles from collapsed branches
     const hiddenHandles = useMemo(() => {
+        if (!treeData) return new Set<string>();
         const hidden = new Set<string>();
         for (const h of collapsedBranches) {
             const descendants = getDescendantHandles(h);
             for (const d of descendants) hidden.add(d);
         }
+        // Cascade: hide people whose ALL parent families have hidden fathers
+        // This catches nodes that leaked through (e.g., gen 13 whose gen 12 parents are hidden)
+        const familyMap = new Map(treeData.families.map(f => [f.handle, f]));
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const p of treeData.people) {
+                if (hidden.has(p.handle)) continue;
+                if (p.parentFamilies.length === 0) continue;
+                // Check if ALL parent families have their father/mother hidden
+                const allParentsHidden = p.parentFamilies.every(pfId => {
+                    const pf = familyMap.get(pfId);
+                    if (!pf) return true; // orphan family = treat as hidden
+                    const fatherHidden = pf.fatherHandle ? hidden.has(pf.fatherHandle) : true;
+                    const motherHidden = pf.motherHandle ? hidden.has(pf.motherHandle) : true;
+                    return fatherHidden && motherHidden;
+                });
+                if (allParentsHidden) {
+                    hidden.add(p.handle);
+                    changed = true;
+                }
+            }
+        }
         return hidden;
-    }, [collapsedBranches, getDescendantHandles]);
+    }, [collapsedBranches, getDescendantHandles, treeData]);
 
     // F4: Branch summaries for collapsed branches
     const branchSummaries = useMemo(() => {
