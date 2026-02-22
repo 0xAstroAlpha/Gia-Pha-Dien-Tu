@@ -88,10 +88,10 @@ export default function EventDetailPage() {
                     <CardTitle className="text-2xl">{event.title as string}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {event.description && <p className="text-muted-foreground">{String(event.description)}</p>}
+                    {typeof event.description === 'string' && event.description && <p className="text-muted-foreground">{event.description}</p>}
                     <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2"><Clock className="h-4 w-4" />{new Date(event.start_at as string).toLocaleString('vi-VN')}</div>
-                        {event.location && <div className="flex items-center gap-2"><MapPin className="h-4 w-4" />{String(event.location)}</div>}
+                        {typeof event.location === 'string' && event.location && <div className="flex items-center gap-2"><MapPin className="h-4 w-4" />{event.location}</div>}
                         <div className="flex items-center gap-2"><Users className="h-4 w-4" />{rsvps.filter((r: Record<string, unknown>) => r.status === 'GOING').length} người tham dự</div>
                     </div>
 

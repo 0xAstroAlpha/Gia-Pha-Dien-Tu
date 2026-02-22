@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Printer, ArrowLeft, BookOpen, Eye, Palette, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MOCK_TREE_NODES, MOCK_FAMILIES } from '@/lib/mock-genealogy';
+import { fetchTreeData } from '@/lib/supabase-data';
 import { generateBookData, type BookData, type BookPerson, type BookChapter } from '@/lib/book-generator';
 import type { TreeNode, TreeFamily } from '@/lib/tree-layout';
 import Link from 'next/link';
@@ -22,25 +23,25 @@ const THEMES: Record<string, Theme> = {
         name: 'Cổ điển', swatch: '#92400e',
         primary: '#92400e', primaryLight: '#fef3c7', primaryBg: '#fffbeb',
         secondary: '#b45309', accent: '#d97706',
-        border: '#fbbf24', borderLight: '#fde68a',
+        border: '#f59e0b', borderLight: '#fde68a',
         text: '#451a03', textMuted: '#92400e99',
     },
-    navy: {
-        name: 'Thanh lịch', swatch: '#1e3a5f',
-        primary: '#1e3a5f', primaryLight: '#dbeafe', primaryBg: '#eff6ff',
-        secondary: '#2563eb', accent: '#3b82f6',
-        border: '#60a5fa', borderLight: '#bfdbfe',
-        text: '#0f172a', textMuted: '#1e3a5f99',
+    emerald: {
+        name: 'Thanh nhã', swatch: '#065f46',
+        primary: '#065f46', primaryLight: '#d1fae5', primaryBg: '#ecfdf5',
+        secondary: '#047857', accent: '#059669',
+        border: '#34d399', borderLight: '#a7f3d0',
+        text: '#022c22', textMuted: '#06534099',
     },
-    sage: {
-        name: 'Thanh tao', swatch: '#365314',
-        primary: '#365314', primaryLight: '#dcfce7', primaryBg: '#f0fdf4',
-        secondary: '#15803d', accent: '#22c55e',
-        border: '#4ade80', borderLight: '#bbf7d0',
-        text: '#14532d', textMuted: '#36531499',
+    slate: {
+        name: 'Hiện đại', swatch: '#1e293b',
+        primary: '#1e293b', primaryLight: '#e2e8f0', primaryBg: '#f8fafc',
+        secondary: '#334155', accent: '#475569',
+        border: '#94a3b8', borderLight: '#cbd5e1',
+        text: '#0f172a', textMuted: '#47556999',
     },
-    burgundy: {
-        name: 'Trang trọng', swatch: '#7f1d1d',
+    rose: {
+        name: 'Ấm áp', swatch: '#7f1d1d',
         primary: '#7f1d1d', primaryLight: '#fce7f3', primaryBg: '#fff1f2',
         secondary: '#be123c', accent: '#e11d48',
         border: '#fb7185', borderLight: '#fecdd3',
@@ -55,23 +56,14 @@ export default function BookPage() {
     const [loading, setLoading] = useState(true);
     const [previewMode, setPreviewMode] = useState(false);
     const [theme, setTheme] = useState<ThemeKey>('amber');
-    const [showThemePanel, setShowThemePanel] = useState(false);
-    const [previewScale, setPreviewScale] = useState(0.35);
-    const gridRef = useRef<HTMLDivElement>(null);
+    const [showThemePicker, setShowThemePicker] = useState(false);
+    const pagesRef = useRef<HTMLDivElement>(null);
 
-    // Dynamic scale: fit 210mm (794px) content to actual card width
+    // Auto-scroll to top when entering preview mode
     useEffect(() => {
-        if (!previewMode || !gridRef.current) return;
-        const observer = new ResizeObserver(() => {
-            const grid = gridRef.current;
-            if (!grid) return;
-            const firstCard = grid.querySelector('.preview-card-inner') as HTMLElement;
-            if (firstCard) {
-                setPreviewScale(firstCard.offsetWidth / 794);
-            }
-        });
-        observer.observe(gridRef.current);
-        return () => observer.disconnect();
+        if (previewMode && pagesRef.current) {
+            pagesRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     }, [previewMode]);
 
     const t = THEMES[theme];
@@ -81,18 +73,10 @@ export default function BookPage() {
             let people: TreeNode[] = MOCK_TREE_NODES;
             let families: TreeFamily[] = MOCK_FAMILIES;
             try {
-                const token = localStorage.getItem('accessToken');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-                if (token && apiUrl) {
-                    const res = await fetch(`${apiUrl}/genealogy/tree`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                        signal: AbortSignal.timeout(3000),
-                    });
-                    if (res.ok) {
-                        const json = await res.json();
-                        people = json.data.people;
-                        families = json.data.families;
-                    }
+                const treeData = await fetchTreeData();
+                if (treeData.people.length > 0) {
+                    people = treeData.people;
+                    families = treeData.families;
                 }
             } catch { /* fallback to mock */ }
             const data = generateBookData(people, families, 'Lê Huy');
@@ -247,12 +231,12 @@ export default function BookPage() {
                         {/* Theme picker */}
                         <div className="relative">
                             <Button variant="outline" size="sm" className="gap-1.5"
-                                onClick={() => setShowThemePanel(!showThemePanel)}>
+                                onClick={() => setShowThemePicker(!showThemePicker)}>
                                 <Palette className="w-3.5 h-3.5" />
                                 <span className="hidden sm:inline text-xs">{t.name}</span>
                                 <span className="w-3 h-3 rounded-full border" style={{ background: t.swatch }} />
                             </Button>
-                            {showThemePanel && (
+                            {showThemePicker && (
                                 <div className="absolute right-0 top-full mt-1 bg-white border rounded-xl shadow-xl p-3 min-w-[200px] z-50">
                                     <p className="text-xs font-medium text-muted-foreground mb-2">Bảng màu</p>
                                     <div className="space-y-1">
@@ -260,7 +244,7 @@ export default function BookPage() {
                                             <button key={key}
                                                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-sm
                                                     ${theme === key ? 'bg-slate-100 font-medium' : 'hover:bg-slate-50'}`}
-                                                onClick={() => { setTheme(key); setShowThemePanel(false); }}>
+                                                onClick={() => { setTheme(key); setShowThemePicker(false); }}>
                                                 <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center"
                                                     style={{ background: th.primaryLight, borderColor: th.primary }}>
                                                     {theme === key && <Check className="w-3 h-3" style={{ color: th.primary }} />}
@@ -314,7 +298,7 @@ export default function BookPage() {
             {/* ═══ PRINT PREVIEW GALLERY ═══ */}
             {previewMode && (
                 <div className="no-print bg-slate-100 min-h-screen p-6">
-                    <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                    <div ref={pagesRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
                         {sections.map(s => (
                             <div key={s.id} id={`preview-${s.id}`} className="relative">
                                 <div className="preview-card-inner bg-white rounded-lg shadow-md border overflow-hidden hover:shadow-xl transition-shadow">
@@ -325,7 +309,7 @@ export default function BookPage() {
                                     <div className="aspect-[210/297] overflow-hidden">
                                         <div
                                             className="w-[210mm] h-[297mm] origin-top-left"
-                                            style={{ transform: `scale(${previewScale})` }}
+                                            style={{ transform: `scale(0.35)` }}
                                         >
                                             <BookSection sectionId={s.id} bookData={bookData} theme={t}
                                                 memberStart={s.memberStart} memberEnd={s.memberEnd} isFirstPage={s.isFirstPage}

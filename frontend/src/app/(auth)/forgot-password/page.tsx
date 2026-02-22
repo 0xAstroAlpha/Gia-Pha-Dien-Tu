@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { apiClient } from '@/lib/api-client';
+import { supabase } from '@/lib/supabase';
 
 const forgotSchema = z.object({
     email: z.string().email('Email không hợp lệ'),
@@ -32,10 +32,16 @@ export default function ForgotPasswordPage() {
         try {
             setError('');
             setLoading(true);
-            await apiClient.post('/auth/forgot-password', data);
-            setSent(true);
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || 'Có lỗi xảy ra');
+            const { error: resetErr } = await supabase.auth.resetPasswordForEmail(data.email, {
+                redirectTo: `${window.location.origin}/reset-password`,
+            });
+            if (resetErr) {
+                setError(resetErr.message);
+            } else {
+                setSent(true);
+            }
+        } catch {
+            setError('Có lỗi xảy ra');
         } finally {
             setLoading(false);
         }

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { apiClient } from '@/lib/api-client';
+import { supabase } from '@/lib/supabase';
 
 const registerSchema = z.object({
     email: z.string().email('Email không hợp lệ'),
@@ -46,17 +46,61 @@ function RegisterContent() {
         try {
             setError('');
             setLoading(true);
-            const res = await apiClient.post('/auth/register', {
+
+            // Validate invite code against Supabase
+            const { data: invite, error: inviteErr } = await supabase
+                .from('invite_links')
+                .select('*')
+                .eq('code', inviteCode)
+                .single();
+
+            if (inviteErr || !invite) {
+                setError('Mã mời không hợp lệ hoặc đã hết hạn');
+                return;
+            }
+
+            if (invite.max_uses && invite.used_count >= invite.max_uses) {
+                setError('Mã mời đã hết lượt sử dụng');
+                return;
+            }
+
+            // Sign up via Supabase Auth
+            const { data: authData, error: authErr } = await supabase.auth.signUp({
                 email: data.email,
                 password: data.password,
-                displayName: data.displayName,
-                inviteCode,
+                options: {
+                    data: {
+                        display_name: data.displayName,
+                        invite_code: inviteCode,
+                    },
+                },
             });
-            localStorage.setItem('accessToken', res.data.data.accessToken);
-            localStorage.setItem('refreshToken', res.data.data.refreshToken);
+
+            if (authErr) {
+                setError(authErr.message);
+                return;
+            }
+
+            // Increment invite used_count
+            await supabase
+                .from('invite_links')
+                .update({ used_count: (invite.used_count || 0) + 1 })
+                .eq('id', invite.id);
+
+            // Create profile
+            if (authData.user) {
+                await supabase.from('profiles').upsert({
+                    id: authData.user.id,
+                    email: data.email,
+                    display_name: data.displayName,
+                    role: invite.role || 'member',
+                    status: 'active',
+                });
+            }
+
             router.push('/');
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || 'Đăng ký thất bại');
+        } catch (err: unknown) {
+            setError('Đăng ký thất bại. Vui lòng thử lại.');
         } finally {
             setLoading(false);
         }
@@ -144,4 +188,3 @@ export default function RegisterPage() {
         </Suspense>
     );
 }
-

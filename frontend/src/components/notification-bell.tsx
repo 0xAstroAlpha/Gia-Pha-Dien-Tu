@@ -4,32 +4,32 @@ import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/components/auth-provider';
 
 export function NotificationBell() {
     const router = useRouter();
+    const { user, isLoggedIn } = useAuth();
     const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
+        if (!isLoggedIn || !user) return;
+
         const fetchCount = async () => {
             try {
-                const token = localStorage.getItem('accessToken');
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-                if (!token || !apiUrl) return;
-
-                const res = await fetch(`${apiUrl}/notifications/unread-count`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (res.ok) {
-                    const json = await res.json();
-                    setUnreadCount(json.data.count);
-                }
+                const { count } = await supabase
+                    .from('notifications')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .eq('is_read', false);
+                setUnreadCount(count || 0);
             } catch { /* ignore */ }
         };
 
         fetchCount();
         const interval = setInterval(fetchCount, 30000); // Poll every 30s
         return () => clearInterval(interval);
-    }, []);
+    }, [isLoggedIn, user]);
 
     return (
         <Button
