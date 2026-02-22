@@ -96,8 +96,9 @@ export async function moveChildToFamily(
     const fromFam = currentFamilies.find(f => f.handle === fromFamilyHandle);
     const toFam = currentFamilies.find(f => f.handle === toFamilyHandle);
 
-    const updates: Promise<void>[] = [];
+    const updates: Promise<unknown>[] = [];
 
+    // Update families.children on both families
     if (fromFam) {
         updates.push(
             updateFamilyChildren(fromFamilyHandle, fromFam.children.filter(ch => ch !== childHandle))
@@ -106,6 +107,21 @@ export async function moveChildToFamily(
     if (toFam) {
         updates.push(
             updateFamilyChildren(toFamilyHandle, [...toFam.children.filter(ch => ch !== childHandle), childHandle])
+        );
+    }
+
+    // Update people.parent_families on the child
+    const { data: personData } = await supabase
+        .from('people')
+        .select('parent_families')
+        .eq('handle', childHandle)
+        .single();
+
+    if (personData) {
+        const currentPF = (personData.parent_families as string[]) || [];
+        const newPF = [...currentPF.filter(pf => pf !== fromFamilyHandle), toFamilyHandle];
+        updates.push(
+            (async () => { await supabase.from('people').update({ parent_families: newPF, updated_at: new Date().toISOString() }).eq('handle', childHandle); })()
         );
     }
 
@@ -119,9 +135,30 @@ export async function removeChildFromFamily(
     currentFamilies: TreeFamily[]
 ): Promise<void> {
     const fam = currentFamilies.find(f => f.handle === familyHandle);
+    const updates: Promise<unknown>[] = [];
+
     if (fam) {
-        await updateFamilyChildren(familyHandle, fam.children.filter(ch => ch !== childHandle));
+        updates.push(
+            updateFamilyChildren(familyHandle, fam.children.filter(ch => ch !== childHandle))
+        );
     }
+
+    // Also update people.parent_families on the child
+    const { data: personData } = await supabase
+        .from('people')
+        .select('parent_families')
+        .eq('handle', childHandle)
+        .single();
+
+    if (personData) {
+        const currentPF = (personData.parent_families as string[]) || [];
+        const newPF = currentPF.filter(pf => pf !== familyHandle);
+        updates.push(
+            (async () => { await supabase.from('people').update({ parent_families: newPF, updated_at: new Date().toISOString() }).eq('handle', childHandle); })()
+        );
+    }
+
+    await Promise.all(updates);
 }
 
 /** Update a person's isLiving status */
