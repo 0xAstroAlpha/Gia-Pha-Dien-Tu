@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import { useAuth } from '@/components/auth-provider';
 
 const navItems = [
     { href: '/', label: 'Trang chủ', icon: Home },
@@ -43,6 +44,7 @@ const adminItems = [
 export function Sidebar() {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
+    const { isAdmin } = useAuth();
 
     return (
         <aside
@@ -78,33 +80,37 @@ export function Sidebar() {
                     );
                 })}
 
-                {/* Admin section */}
-                {!collapsed && (
-                    <div className="pt-4 pb-2">
-                        <span className="px-3 text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-                            Quản trị
-                        </span>
-                    </div>
+                {/* Admin section — only visible for admin users */}
+                {isAdmin && (
+                    <>
+                        {!collapsed && (
+                            <div className="pt-4 pb-2">
+                                <span className="px-3 text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                                    Quản trị
+                                </span>
+                            </div>
+                        )}
+                        {collapsed && <div className="border-t my-2" />}
+                        {adminItems.map((item) => {
+                            const isActive = pathname.startsWith(item.href);
+                            return (
+                                <Link key={item.href} href={item.href}>
+                                    <span
+                                        className={cn(
+                                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                                            isActive
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                                        )}
+                                    >
+                                        <item.icon className="h-4 w-4 shrink-0" />
+                                        {!collapsed && item.label}
+                                    </span>
+                                </Link>
+                            );
+                        })}
+                    </>
                 )}
-                {collapsed && <div className="border-t my-2" />}
-                {adminItems.map((item) => {
-                    const isActive = pathname.startsWith(item.href);
-                    return (
-                        <Link key={item.href} href={item.href}>
-                            <span
-                                className={cn(
-                                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                                    isActive
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                )}
-                            >
-                                <item.icon className="h-4 w-4 shrink-0" />
-                                {!collapsed && item.label}
-                            </span>
-                        </Link>
-                    );
-                })}
             </nav>
 
             {/* Collapse toggle */}
