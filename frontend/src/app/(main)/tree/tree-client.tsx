@@ -8,7 +8,7 @@ import { Search, ZoomIn, ZoomOut, Maximize2, TreePine, Eye, Users, GitBranch, Us
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { MOCK_TREE_NODES, MOCK_FAMILIES } from '@/lib/mock-genealogy';
+
 import {
     fetchTreeData,
     updateFamilyChildren as supaUpdateFamilyChildren,
@@ -294,7 +294,7 @@ export default function TreeViewPage() {
                     return;
                 }
             } catch { /* fallback to mock */ }
-            setTreeData({ people: MOCK_TREE_NODES as TreeNode[], families: MOCK_FAMILIES as TreeFamily[] });
+            setTreeData(null);
             setLoading(false);
         };
         fetchTree();

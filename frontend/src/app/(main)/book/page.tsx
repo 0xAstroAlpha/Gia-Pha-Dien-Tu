@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Printer, ArrowLeft, BookOpen, Eye, Palette, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { MOCK_TREE_NODES, MOCK_FAMILIES } from '@/lib/mock-genealogy';
 import { fetchTreeData } from '@/lib/supabase-data';
 import { generateBookData, type BookData, type BookPerson, type BookChapter } from '@/lib/book-generator';
 import type { TreeNode, TreeFamily } from '@/lib/tree-layout';
@@ -70,17 +69,13 @@ export default function BookPage() {
 
     useEffect(() => {
         const fetchAndGenerate = async () => {
-            let people: TreeNode[] = MOCK_TREE_NODES;
-            let families: TreeFamily[] = MOCK_FAMILIES;
             try {
                 const treeData = await fetchTreeData();
-                if (treeData.people.length > 0) {
-                    people = treeData.people;
-                    families = treeData.families;
-                }
-            } catch { /* fallback to mock */ }
-            const data = generateBookData(people, families, 'Lê Huy');
-            setBookData(data);
+                const data = generateBookData(treeData.people, treeData.families, 'Lê Huy');
+                setBookData(data);
+            } catch {
+                setBookData(null);
+            }
             setLoading(false);
         };
         fetchAndGenerate();

@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MOCK_PEOPLE } from '@/lib/mock-genealogy';
 import {
     Table,
     TableBody,
@@ -39,14 +38,12 @@ export default function PeopleListPage() {
     useEffect(() => {
         const fetchPeople = async () => {
             try {
-                // Fetch from Supabase people table (snake_case columns)
                 const { supabase } = await import('@/lib/supabase');
                 const { data, error } = await supabase
                     .from('people')
                     .select('handle, display_name, gender, birth_year, death_year, is_living, is_privacy_filtered')
                     .order('display_name', { ascending: true });
-                if (!error && data && data.length > 0) {
-                    // Convert snake_case → camelCase for UI
+                if (!error && data) {
                     setPeople(data.map((row: Record<string, unknown>) => ({
                         handle: row.handle as string,
                         displayName: row.display_name as string,
@@ -56,14 +53,8 @@ export default function PeopleListPage() {
                         isLiving: row.is_living as boolean,
                         isPrivacyFiltered: row.is_privacy_filtered as boolean,
                     })));
-                    setLoading(false);
-                    return;
                 }
-            } catch {
-                // Supabase unavailable
-            }
-            // Fallback to mock data
-            setPeople(MOCK_PEOPLE);
+            } catch { /* ignore */ }
             setLoading(false);
         };
         fetchPeople();

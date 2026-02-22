@@ -9,8 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { MOCK_PEOPLE, zodiacYear } from '@/lib/mock-genealogy';
-import type { PersonDetail } from '@/lib/mock-genealogy';
+import { zodiacYear } from '@/lib/genealogy-types';
+import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
 
 
@@ -31,7 +31,6 @@ export default function PersonProfilePage() {
                     .eq('handle', handle)
                     .single();
                 if (!error && data) {
-                    // Convert snake_case DB row → camelCase PersonDetail
                     const row = data as Record<string, unknown>;
                     setPerson({
                         handle: row.handle as string,
@@ -53,15 +52,8 @@ export default function PersonProfilePage() {
                         education: row.education as string | undefined,
                         notes: row.notes as string | undefined,
                     } as PersonDetail);
-                    setLoading(false);
-                    return;
                 }
-            } catch {
-                // Supabase unavailable
-            }
-            // Fallback to mock data
-            const mockPerson = MOCK_PEOPLE.find((p) => p.handle === handle) || null;
-            setPerson(mockPerson);
+            } catch { /* ignore */ }
             setLoading(false);
         };
         fetchPerson();
