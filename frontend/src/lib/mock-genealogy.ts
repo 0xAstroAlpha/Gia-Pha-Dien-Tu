@@ -1530,7 +1530,7 @@ export const MOCK_PEOPLE: PersonDetail[] = [
         displayName: 'Lê Huy Hớn', surname: 'Lê', firstName: 'Huy Hớn',
         generation: 11, chi: 3,
         isLiving: true, isPrivacyFiltered: false, isPatrilineal: true,
-        families: ['F999'], parentFamilies: ['F106']
+        families: ['F109'], parentFamilies: ['F106']
     },
     {
         handle: 'C104', gramps_id: 'I0207', gender: 1,
@@ -2900,7 +2900,19 @@ export const MOCK_FAMILIES: TreeFamily[] = [
     },
     {
         handle: 'F069', fatherHandle: 'D104',
-        children: ['D110', 'D111', 'D112', 'D113', 'D114', 'D115']
+        children: ['D999', 'D110', 'D111', 'D112', 'D113', 'D114', 'D115']
+    },
+    {
+        handle: 'F999', fatherHandle: 'D999',
+        children: ['D121', 'D998']
+    },
+    {
+        handle: 'F998', fatherHandle: 'D129',
+        children: ['D994']
+    },
+    {
+        handle: 'F997', fatherHandle: 'D130',
+        children: ['D993']
     },
     {
         handle: 'F070', fatherHandle: 'D105',
