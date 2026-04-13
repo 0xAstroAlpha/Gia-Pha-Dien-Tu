@@ -18,7 +18,7 @@ import {
     updatePerson as supaUpdatePerson,
 } from '@/lib/supabase-data';
 import {
-    computeLayout, filterAncestors, filterDescendants,
+    computeLayout, computeTreeGenerations, filterAncestors, filterDescendants,
     CARD_W, CARD_H,
     type TreeNode, type TreeFamily, type LayoutResult, type PositionedNode, type PositionedCouple, type Connection,
 } from '@/lib/tree-layout';
@@ -108,6 +108,28 @@ interface TreeStats {
     nonPatrilinealCount: number;
 }
 
+/** Skip drawing a line segment if an endpoint lies on a hidden (collapsed) person's card. */
+function segmentTouchesHiddenCard(
+    fromX: number, fromY: number, toX: number, toY: number,
+    nodes: PositionedNode[],
+    hiddenHandles: Set<string>,
+): boolean {
+    const pad = 6;
+    const pts: [number, number][] = [[fromX, fromY], [toX, toY]];
+    for (const [px, py] of pts) {
+        for (const n of nodes) {
+            if (!hiddenHandles.has(n.node.handle)) continue;
+            if (
+                px >= n.x - pad && px <= n.x + CARD_W + pad &&
+                py >= n.y - pad && py <= n.y + CARD_H + pad
+            ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function computeTreeStats(nodes: PositionedNode[], families: TreeFamily[]): TreeStats {
     const genMap = new Map<number, number>();
     let living = 0, deceased = 0, patri = 0, nonPatri = 0;
@@ -134,34 +156,6 @@ function computeTreeStats(nodes: PositionedNode[], families: TreeFamily[]): Tree
 
 // Default depth at which branches auto-collapse in panoramic view (0-indexed: gen 3 = Đời 4)
 const AUTO_COLLAPSE_GEN = 8;
-
-// Compute generations via BFS from root persons (persons not in any family as children)
-function computePersonGenerations(people: TreeNode[], families: TreeFamily[]): Map<string, number> {
-    const childOf = new Set<string>();
-    for (const f of families) for (const ch of f.children) childOf.add(ch);
-    const roots = people.filter(p => p.isPatrilineal && !childOf.has(p.handle));
-    const gens = new Map<string, number>();
-    const familyMap = new Map(families.map(f => [f.handle, f]));
-    const queue: { handle: string; gen: number }[] = roots.map(r => ({ handle: r.handle, gen: 0 }));
-    while (queue.length > 0) {
-        const { handle, gen } = queue.shift()!;
-        if (gens.has(handle)) continue;
-        gens.set(handle, gen);
-        const person = people.find(p => p.handle === handle);
-        if (!person) continue;
-        for (const fId of person.families) {
-            const fam = familyMap.get(fId);
-            if (!fam) continue;
-            // Spouse at same gen
-            if (fam.fatherHandle && !gens.has(fam.fatherHandle)) gens.set(fam.fatherHandle, gen);
-            if (fam.motherHandle && !gens.has(fam.motherHandle)) gens.set(fam.motherHandle, gen);
-            for (const ch of fam.children) {
-                if (!gens.has(ch)) queue.push({ handle: ch, gen: gen + 1 });
-            }
-        }
-    }
-    return gens;
-}
 
 export default function TreeViewPage() {
     const router = useRouter();
@@ -207,7 +201,7 @@ export default function TreeViewPage() {
         // Auto-collapse on initial load
         if (!viewParam || viewParam === 'full') {
             // Panoramic: collapse by absolute generation
-            const gens = computePersonGenerations(treeData.people, treeData.families);
+            const gens = computeTreeGenerations(treeData.people, treeData.families);
             const toCollapse = new Set<string>();
             for (const f of treeData.families) {
                 if (f.children.length === 0) continue;
@@ -311,21 +305,22 @@ export default function TreeViewPage() {
     // F1: Zoom level
     const zoomLevel = useMemo<ZoomLevel>(() => getZoomLevel(transform.scale), [transform.scale]);
 
-    // F4: Get all descendants of collapsed branches
+    /**
+     * Everyone hidden when collapsing under `rootHandle` (except `rootHandle` itself):
+     * all spouses in families where this person is a parent, all children, and recursively their spouses and descendants.
+     */
     const getDescendantHandles = useCallback((handle: string): Set<string> => {
         if (!treeData) return new Set();
-        const personMap = new Map(treeData.people.map(p => [p.handle, p]));
-        const familyMap = new Map(treeData.families.map(f => [f.handle, f]));
+        const families = treeData.families;
         const result = new Set<string>();
         function walk(h: string) {
-            const person = personMap.get(h);
-            if (!person) return;
-            for (const fId of person.families) {
-                const fam = familyMap.get(fId);
-                if (!fam) continue;
-                // Include spouse
-                if (fam.motherHandle && fam.motherHandle !== h) result.add(fam.motherHandle);
-                if (fam.fatherHandle && fam.fatherHandle !== h) result.add(fam.fatherHandle);
+            for (const fam of families) {
+                if (fam.fatherHandle !== h && fam.motherHandle !== h) continue;
+                if (fam.fatherHandle === h && fam.motherHandle) {
+                    result.add(fam.motherHandle);
+                } else if (fam.motherHandle === h && fam.fatherHandle) {
+                    result.add(fam.fatherHandle);
+                }
                 for (const ch of fam.children) {
                     result.add(ch);
                     walk(ch);
@@ -336,6 +331,19 @@ export default function TreeViewPage() {
         return result;
     }, [treeData]);
 
+    /** Thu gọn nhánh: chỉ dành cho người nội tộc (chính tộc), có ít nhất một gia đình làm cha/mẹ. */
+    const canCollapseBranch = useCallback(
+        (handle: string): boolean => {
+            if (!treeData) return false;
+            const person = treeData.people.find(p => p.handle === handle);
+            if (!person?.isPatrilineal) return false;
+            return treeData.families.some(
+                f => f.fatherHandle === handle || f.motherHandle === handle,
+            );
+        },
+        [treeData],
+    );
+
     // F4: Compute all hidden handles from collapsed branches
     const hiddenHandles = useMemo(() => {
         if (!treeData) return new Set<string>();
@@ -344,7 +352,7 @@ export default function TreeViewPage() {
             const descendants = getDescendantHandles(h);
             for (const d of descendants) hidden.add(d);
         }
-        // Cascade: hide people whose ALL parent families have hidden fathers
+                // Cascade: hide people whose ALL parent families have both parents hidden
         // This catches nodes that leaked through (e.g., gen 13 whose gen 12 parents are hidden)
         const familyMap = new Map(treeData.families.map(f => [f.handle, f]));
         let changed = true;
@@ -370,6 +378,22 @@ export default function TreeViewPage() {
         return hidden;
     }, [collapsedBranches, getDescendantHandles, treeData]);
 
+    const familyByHandle = useMemo(
+        () => (treeData ? new Map(treeData.families.map(f => [f.handle, f])) : new Map<string, TreeFamily>()),
+        [treeData],
+    );
+
+    /** Parent→child “bus” segments have endpoints between cards; hide the whole family’s connectors when every child is collapsed away. */
+    const familiesWithAllChildrenHidden = useMemo(() => {
+        if (!treeData) return new Set<string>();
+        const s = new Set<string>();
+        for (const f of treeData.families) {
+            if (f.children.length === 0) continue;
+            if (f.children.every(ch => hiddenHandles.has(ch))) s.add(f.handle);
+        }
+        return s;
+    }, [treeData, hiddenHandles]);
+
     // F4: Branch summaries for collapsed branches
     const branchSummaries = useMemo(() => {
         if (!treeData) return new Map<string, BranchSummary>();
@@ -380,31 +404,28 @@ export default function TreeViewPage() {
         return map;
     }, [collapsedBranches, treeData]);
 
-    // F4: Toggle collapse — reveals one level at a time when expanding
+    // F4: Toggle collapse — only nội tộc; expanding may re-collapse nội tộc children (progressive reveal)
     const toggleCollapse = useCallback((handle: string) => {
         if (!treeData) return;
+        const person = treeData.people.find(p => p.handle === handle);
+        if (!person?.isPatrilineal) return;
         setCollapsedBranches(prev => {
             const next = new Set(prev);
             if (next.has(handle)) {
-                // Expanding: remove this person's collapse, but auto-collapse their
-                // direct children who have descendants (progressive reveal)
                 next.delete(handle);
-                const person = treeData.people.find(p => p.handle === handle);
                 if (person) {
                     for (const fId of person.families) {
                         const fam = treeData.families.find(f => f.handle === fId);
                         if (!fam) continue;
                         for (const ch of fam.children) {
-                            // Check if child has their own children
                             const childPerson = treeData.people.find(p => p.handle === ch);
-                            if (childPerson) {
-                                const childHasChildren = childPerson.families.some(cfId => {
-                                    const cf = treeData.families.find(f => f.handle === cfId);
-                                    return cf && cf.children.length > 0;
-                                });
-                                if (childHasChildren) {
-                                    next.add(ch);
-                                }
+                            if (!childPerson?.isPatrilineal) continue;
+                            const childHasChildren = childPerson.families.some(cfId => {
+                                const cf = treeData.families.find(f => f.handle === cfId);
+                                return cf && cf.children.length > 0;
+                            });
+                            if (childHasChildren) {
+                                next.add(ch);
                             }
                         }
                     }
@@ -423,11 +444,17 @@ export default function TreeViewPage() {
 
     const collapseAll = useCallback(() => {
         if (!treeData) return;
+        const pmap = new Map(treeData.people.map(p => [p.handle, p]));
         const allParents = new Set<string>();
         for (const f of treeData.families) {
-            if (f.children.length > 0) {
-                if (f.fatherHandle) allParents.add(f.fatherHandle);
-                if (f.motherHandle) allParents.add(f.motherHandle);
+            if (f.children.length === 0) continue;
+            if (f.fatherHandle) {
+                const p = pmap.get(f.fatherHandle);
+                if (p?.isPatrilineal) allParents.add(f.fatherHandle);
+            }
+            if (f.motherHandle) {
+                const p = pmap.get(f.motherHandle);
+                if (p?.isPatrilineal) allParents.add(f.motherHandle);
             }
         }
         setCollapsedBranches(allParents);
@@ -436,12 +463,15 @@ export default function TreeViewPage() {
     // Auto-collapse for Toàn cảnh view
     const autoCollapseForPanoramic = useCallback(() => {
         if (!treeData) return;
-        const gens = computePersonGenerations(treeData.people, treeData.families);
+        const gens = computeTreeGenerations(treeData.people, treeData.families);
+        const pmap = new Map(treeData.people.map(p => [p.handle, p]));
         const toCollapse = new Set<string>();
         for (const f of treeData.families) {
             if (f.children.length === 0) continue;
             const parentHandle = f.fatherHandle || f.motherHandle;
             if (!parentHandle) continue;
+            const p = pmap.get(parentHandle);
+            if (!p?.isPatrilineal) continue;
             const gen = gens.get(parentHandle);
             if (gen !== undefined && gen >= AUTO_COLLAPSE_GEN) {
                 toCollapse.add(parentHandle);
@@ -468,7 +498,7 @@ export default function TreeViewPage() {
                 const fam = treeData.families.find(f => f.handle === fId);
                 if (!fam || fam.children.length === 0) continue;
                 if (depth >= AUTO_COLLAPSE_GEN) {
-                    toCollapse.add(h);
+                    if (p.isPatrilineal) toCollapse.add(h);
                 } else {
                     for (const ch of fam.children) {
                         if (!depthMap.has(ch)) {
@@ -482,58 +512,46 @@ export default function TreeViewPage() {
         setCollapsedBranches(toCollapse);
     }, [treeData]);
 
-    // Compute layout — filter out hidden nodes from collapsed branches
+    // Layout always uses the full display graph so card positions do not reflow when collapsing branches.
+    // Collapse only hides rendering (and trims lines into hidden subtrees).
     const layout = useMemo<LayoutResult | null>(() => {
         if (!displayData) return null;
         const d = 'filteredPeople' in displayData
             ? { people: (displayData as any).filteredPeople, families: (displayData as any).filteredFamilies }
             : displayData;
-        // F4: Filter out hidden handles
-        const visiblePeople = d.people.filter((p: TreeNode) => !hiddenHandles.has(p.handle));
-        if (visiblePeople.length === 0) return null;
-        const visibleFamilies = d.families.filter((f: TreeFamily) => {
-            // Keep family only if NOT all parents are hidden
-            const fatherHidden = f.fatherHandle ? hiddenHandles.has(f.fatherHandle) : true;
-            const motherHidden = f.motherHandle ? hiddenHandles.has(f.motherHandle) : true;
-            return !(fatherHidden && motherHidden);
-        });
-        return computeLayout(visiblePeople, visibleFamilies);
-    }, [displayData, hiddenHandles]);
+        if (d.people.length === 0) return null;
+        return computeLayout(d.people, d.families);
+    }, [displayData]);
 
-    // F4: Check if a person has children (for showing toggle button)
-    const hasChildren = useCallback((handle: string): boolean => {
-        if (!treeData) return false;
-        return treeData.families.some(f =>
-            (f.fatherHandle === handle || f.motherHandle === handle) && f.children.length > 0
-        );
-    }, [treeData]);
 
-    // F3: Stats computed from full layout
+    // F3: Stats for people not hidden by collapse
     const treeStats = useMemo<TreeStats | null>(() => {
         if (!layout || !treeData) return null;
-        return computeTreeStats(layout.nodes, treeData.families);
-    }, [layout, treeData]);
+        const nodes = layout.nodes.filter(n => !hiddenHandles.has(n.node.handle));
+        return computeTreeStats(nodes, treeData.families);
+    }, [layout, treeData, hiddenHandles]);
 
-    // F2: Generation stats for headers
+    // F2: Generation stats for headers (non-hidden only)
     const generationStats = useMemo(() => {
         if (!layout) return new Map<number, number>();
         const map = new Map<number, number>();
         for (const n of layout.nodes) {
+            if (hiddenHandles.has(n.node.handle)) continue;
             const gen = n.generation + 1;
             map.set(gen, (map.get(gen) ?? 0) + 1);
         }
         return map;
-    }, [layout]);
+    }, [layout, hiddenHandles]);
 
-    // ═══ Viewport culling: only render visible nodes ═══
+    // ═══ Viewport culling: layout nodes in view, then drop collapsed-hidden for card render ═══
     const CULL_PAD = 300; // px padding around viewport
 
-    const visibleNodes = useMemo(() => {
-        if (!layout || !viewportRef.current) return layout?.nodes ?? [];
+    const layoutNodesInViewport = useMemo(() => {
+        if (!layout) return [];
+        if (!viewportRef.current) return layout.nodes;
         const vw = viewportRef.current.clientWidth;
         const vh = viewportRef.current.clientHeight;
         const { x: tx, y: ty, scale } = transform;
-        // Convert viewport rect to tree-space coordinates
         const left = (-tx / scale) - CULL_PAD;
         const top = (-ty / scale) - CULL_PAD;
         const right = ((vw - tx) / scale) + CULL_PAD;
@@ -544,7 +562,20 @@ export default function TreeViewPage() {
         );
     }, [layout, transform]);
 
-    const visibleHandles = useMemo(() => new Set(visibleNodes.map(n => n.node.handle)), [visibleNodes]);
+    const visibleNodes = useMemo(
+        () => layoutNodesInViewport.filter(n => !hiddenHandles.has(n.node.handle)),
+        [layoutNodesInViewport, hiddenHandles],
+    );
+
+    const expandedNodeCount = useMemo(
+        () => (layout ? layout.nodes.filter(n => !hiddenHandles.has(n.node.handle)).length : 0),
+        [layout, hiddenHandles],
+    );
+
+    const viewportHandles = useMemo(
+        () => new Set(layoutNodesInViewport.map(n => n.node.handle)),
+        [layoutNodesInViewport],
+    );
 
     // Batched SVG paths for connections
     const { parentPaths, couplePaths, visibleCouples } = useMemo(() => {
@@ -552,36 +583,60 @@ export default function TreeViewPage() {
         let pp = '';
         let cp = '';
         const vc: PositionedCouple[] = [];
-        // Only render connections where at least one endpoint is visible
+        const vw = viewportRef.current?.clientWidth ?? 1200;
+        const vh = viewportRef.current?.clientHeight ?? 900;
+        const { x: tx, y: ty, scale } = transform;
+        const left = (-tx / scale) - CULL_PAD;
+        const top = (-ty / scale) - CULL_PAD;
+        const right = ((vw - tx) / scale) + CULL_PAD;
+        const bottom = ((vh - ty) / scale) + CULL_PAD;
+        const inView = (x: number, y: number) =>
+            x >= left && x <= right && y >= top && y <= bottom;
+
         for (const c of layout.connections) {
-            // Check if any endpoint is near visible area
-            const vw = viewportRef.current?.clientWidth ?? 1200;
-            const vh = viewportRef.current?.clientHeight ?? 900;
-            const { x: tx, y: ty, scale } = transform;
-            const left = (-tx / scale) - CULL_PAD;
-            const top = (-ty / scale) - CULL_PAD;
-            const right = ((vw - tx) / scale) + CULL_PAD;
-            const bottom = ((vh - ty) / scale) + CULL_PAD;
-            const inView = (x: number, y: number) =>
-                x >= left && x <= right && y >= top && y <= bottom;
             if (!inView(c.fromX, c.fromY) && !inView(c.toX, c.toY)) continue;
+            if (
+                c.type === 'parent-child' &&
+                c.familyHandle &&
+                familiesWithAllChildrenHidden.has(c.familyHandle)
+            ) {
+                continue;
+            }
+            if (c.type === 'couple' && c.familyHandle) {
+                const fam = familyByHandle.get(c.familyHandle);
+                if (fam) {
+                    const fhHid = fam.fatherHandle ? hiddenHandles.has(fam.fatherHandle) : false;
+                    const mhHid = fam.motherHandle ? hiddenHandles.has(fam.motherHandle) : false;
+                    if (fhHid || mhHid) continue;
+                }
+            }
+            if (c.type === 'parent-child' && segmentTouchesHiddenCard(
+                c.fromX, c.fromY, c.toX, c.toY, layout.nodes, hiddenHandles,
+            )) {
+                continue;
+            }
+            if (c.type === 'couple' && segmentTouchesHiddenCard(
+                c.fromX, c.fromY, c.toX, c.toY, layout.nodes, hiddenHandles,
+            )) {
+                continue;
+            }
 
             if (c.type === 'couple') {
                 cp += `M${c.fromX},${c.fromY}L${c.toX},${c.toY}`;
             } else {
-                // Each connection segment is already a single straight line
-                // (either horizontal or vertical) from the layout engine
                 pp += `M${c.fromX},${c.fromY}L${c.toX},${c.toY}`;
             }
         }
-        // Visible couples for hearts
         for (const c of layout.couples) {
-            if (visibleHandles.has(c.fatherPos?.node.handle ?? '') || visibleHandles.has(c.motherPos?.node.handle ?? '')) {
+            const fh = c.fatherPos?.node.handle ?? '';
+            const mh = c.motherPos?.node.handle ?? '';
+            if (hiddenHandles.has(fh) || hiddenHandles.has(mh)) continue;
+            if (viewportHandles.has(fh) || viewportHandles.has(mh)) {
                 vc.push(c);
             }
         }
         return { parentPaths: pp, couplePaths: cp, visibleCouples: vc };
-    }, [layout, transform, visibleHandles]);
+    }, [layout, transform, hiddenHandles, viewportHandles, familiesWithAllChildrenHidden, familyByHandle]);
 
     // Stable callbacks for PersonCard
     const handleCardHover = useCallback((h: string | null) => setHoveredHandle(h), []);
@@ -889,7 +944,7 @@ export default function TreeViewPage() {
                             transformOrigin: '0 0', width: layout.width, height: layout.height,
                             position: 'absolute', top: 0, left: 0,
                         }}>
-                            {/* SVG connections — batched into 2 paths */}
+                            {/* SVG: solid = parent↔child; dashed = spouse link */}
                             <svg className="absolute inset-0 pointer-events-none" width={layout.width} height={layout.height}
                                 style={{ overflow: 'visible' }}>
                                 {parentPaths && <path d={parentPaths} stroke="#94a3b8" strokeWidth={1.5} fill="none" />}
@@ -910,7 +965,7 @@ export default function TreeViewPage() {
                                     isHovered={hoveredHandle === item.node.handle}
                                     isSelected={editorMode && selectedCard === item.node.handle}
                                     zoomLevel={zoomLevel}
-                                    showCollapseToggle={hasChildren(item.node.handle)}
+                                    showCollapseToggle={canCollapseBranch(item.node.handle)}
                                     isCollapsed={collapsedBranches.has(item.node.handle)}
                                     onHover={handleCardHover}
                                     onClick={handleCardClick}
@@ -921,6 +976,7 @@ export default function TreeViewPage() {
 
                             {/* F4: Branch summary cards for collapsed nodes */}
                             {Array.from(branchSummaries.entries()).map(([handle, summary]) => {
+                                if (hiddenHandles.has(handle)) return null;
                                 const parentNode = layout.nodes.find(n => n.node.handle === handle);
                                 if (!parentNode) return null;
                                 return (
@@ -975,7 +1031,11 @@ export default function TreeViewPage() {
                     <div className="absolute bottom-2 left-2 bg-background/80 backdrop-blur border rounded px-1.5 py-0.5 text-[10px] text-muted-foreground flex gap-1.5">
                         <span>{Math.round(transform.scale * 100)}%</span>
                         {layout && <span className="opacity-60">·</span>}
-                        {layout && <span>{visibleNodes.length}/{layout.nodes.length} nodes</span>}
+                        {layout && (
+                            <span title="Trong khung / đang mở (không tính nhánh đã thu)">
+                                {visibleNodes.length}/{expandedNodeCount} nodes
+                            </span>
+                        )}
                     </div>
 
                     {/* Focus person selector */}
@@ -1259,12 +1319,13 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                         <span className="text-[8px] font-semibold px-0.5 py-px rounded bg-amber-100 text-amber-700">Đời {item.generation + 1}</span>
                     </div>
                 </div>
-                {/* Collapse toggle */}
+                {/* Collapse toggle — top-right so it is not confused with the tree connector (lines start at couple heart, not card bottom center) */}
                 {showCollapseToggle && (
                     <button
-                        className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 w-5 h-5 rounded-full
-                            bg-white border border-slate-300 shadow-sm flex items-center justify-center
+                        className="absolute top-1 right-1 z-10 w-5 h-5 rounded-full
+                            bg-white/90 border border-slate-300 shadow-sm flex items-center justify-center
                             hover:bg-slate-100 transition-colors"
+                        title={isCollapsed ? 'Mở rộng nhánh' : 'Thu gọn nhánh (nội tộc): ẩn vợ/chồng, con và hậu duệ'}
                         onClick={(e) => { e.stopPropagation(); onToggleCollapse(node.handle); }}
                     >
                         {isCollapsed ? <ChevronRight className="w-3 h-3 text-slate-500" /> : <ChevronDown className="w-3 h-3 text-slate-500" />}
@@ -1323,14 +1384,14 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                 </div>
             </div>
 
-            {/* F4: Collapse toggle button */}
+            {/* F4: Collapse toggle — top-right (tree lines use couple midpoint at bottom, not per-card center) */}
             {showCollapseToggle && (
                 <button
-                    className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 w-6 h-6 rounded-full
-                        bg-white border border-slate-300 shadow-sm flex items-center justify-center
+                    className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full
+                        bg-white/95 border border-slate-300 shadow-sm flex items-center justify-center
                         hover:bg-amber-50 hover:border-amber-400 transition-colors"
                     onClick={(e) => { e.stopPropagation(); onToggleCollapse(node.handle); }}
-                    title={isCollapsed ? 'Mở rộng nhánh' : 'Thu gọn nhánh'}
+                    title={isCollapsed ? 'Mở rộng nhánh' : 'Thu gọn nhánh (nội tộc): ẩn vợ/chồng, con và hậu duệ'}
                 >
                     {isCollapsed ? <ChevronRight className="w-3.5 h-3.5 text-amber-600" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
                 </button>
@@ -1576,9 +1637,11 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
         ? treeData.families.find(f => f.children.includes(person.handle))
         : null;
 
-    // Get parent person name
-    const parentPerson = childOfFamily
-        ? treeData.people.find(p => p.handle === childOfFamily.fatherHandle || p.handle === childOfFamily.motherHandle)
+    const fatherOfSelected = childOfFamily?.fatherHandle
+        ? treeData.people.find(p => p.handle === childOfFamily.fatherHandle)
+        : null;
+    const motherOfSelected = childOfFamily?.motherHandle
+        ? treeData.people.find(p => p.handle === childOfFamily.motherHandle)
         : null;
 
     // Children of the selected person's family
@@ -1648,9 +1711,14 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                     {/* Editable person info */}
                     <div className="p-3 border-b space-y-2">
                         <p className="text-xs text-muted-foreground">Đời {(person as any).generation ?? '?'} · {person.handle}</p>
-                        {parentPerson && (
+                        {fatherOfSelected && (
                             <p className="text-xs text-muted-foreground">
-                                Cha: <span className="font-medium text-foreground">{parentPerson.displayName}</span>
+                                Cha: <span className="font-medium text-foreground">{fatherOfSelected.displayName}</span>
+                            </p>
+                        )}
+                        {motherOfSelected && (
+                            <p className="text-xs text-muted-foreground">
+                                Mẹ: <span className="font-medium text-foreground">{motherOfSelected.displayName}</span>
                             </p>
                         )}
 
@@ -1710,7 +1778,9 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                                 {children.map((child, idx) => (
                                     <div key={child.handle} className="flex items-center gap-1 group">
                                         <GripVertical className="h-3 w-3 text-muted-foreground/40" />
-                                        <span className="flex-1 text-xs truncate">{child.displayName}</span>
+                                        <span className="flex-1 text-xs truncate">
+                                            {child.gender === 1 ? 'Con trai' : child.gender === 2 ? 'Con gái' : 'Con'}: {child.displayName}
+                                        </span>
                                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {idx > 0 && (
                                                 <button
@@ -1764,7 +1834,13 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                             </p>
                             {/* Current parent display */}
                             <p className="text-xs text-muted-foreground mb-1">
-                                Hiện tại: <span className="font-medium text-foreground">{parentPerson?.displayName ?? childOfFamily.handle}</span>
+                                Hiện tại:{' '}
+                                <span className="font-medium text-foreground">
+                                    {[
+                                        fatherOfSelected && `Cha: ${fatherOfSelected.displayName}`,
+                                        motherOfSelected && `Mẹ: ${motherOfSelected.displayName}`,
+                                    ].filter(Boolean).join(' · ') || childOfFamily.handle}
+                                </span>
                             </p>
                             {/* Searchable input */}
                             <div className="relative">
