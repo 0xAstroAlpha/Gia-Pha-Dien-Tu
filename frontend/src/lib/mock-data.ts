@@ -23,7 +23,7 @@ export const MOCK_PEOPLE: TreeNode[] = [
     { handle: 'P012', displayName: 'Nguyễn Văn Phúc', gender: 1, generation: 4, birthYear: 2000, isLiving: true, isPrivacyFiltered: false, isPatrilineal: true, families: [], parentFamilies: ['F006'] },
     // Vợ (ngoại tộc)
     { handle: 'P013', displayName: 'Trần Thị Lan', gender: 2, generation: 1, birthYear: 1925, deathYear: 2000, isLiving: false, isPrivacyFiltered: false, isPatrilineal: false, families: [], parentFamilies: [] },
-    { handle: 'P014', displayName: 'Lê Thị Mai', gender: 2, generation: 2, birthYear: 1948, isLiving: true, isPrivacyFiltered: false, isPatrilineal: false, families: [], parentFamilies: [] },
+    { handle: 'P014', displayName: 'Đỗ Văn Thị Mai', gender: 2, generation: 2, birthYear: 1948, isLiving: true, isPrivacyFiltered: false, isPatrilineal: false, families: [], parentFamilies: [] },
     { handle: 'P015', displayName: 'Phạm Thị Hoa', gender: 2, generation: 3, birthYear: 1972, isLiving: true, isPrivacyFiltered: false, isPatrilineal: false, families: [], parentFamilies: [] },
 ];
 

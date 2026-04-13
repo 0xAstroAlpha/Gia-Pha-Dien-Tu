@@ -22,7 +22,6 @@ import {
     CARD_W, CARD_H,
     type TreeNode, type TreeFamily, type LayoutResult, type PositionedNode, type PositionedCouple, type Connection,
 } from '@/lib/tree-layout';
-import { getMockTreeData } from '@/lib/mock-data';
 
 type ViewMode = 'full' | 'ancestor' | 'descendant';
 type ZoomLevel = 'full' | 'compact' | 'mini';
@@ -289,15 +288,13 @@ export default function TreeViewPage() {
             // Load from Supabase
             try {
                 const data = await fetchTreeData();
-                if (data.people.length > 0) {
-                    setTreeData(data);
-                    setLoading(false);
-                    return;
-                }
-            } catch { /* fallback to mock */ }
-            // Fallback: use bundled mock data (demo mode)
-            setTreeData(getMockTreeData());
-            setLoading(false);
+                setTreeData(data);
+            } catch {
+                // If neither API nor Supabase is reachable, show empty state instead of mock data
+                setTreeData({ people: [], families: [] });
+            } finally {
+                setLoading(false);
+            }
         };
         fetchTree();
     }, []);
@@ -493,6 +490,7 @@ export default function TreeViewPage() {
             : displayData;
         // F4: Filter out hidden handles
         const visiblePeople = d.people.filter((p: TreeNode) => !hiddenHandles.has(p.handle));
+        if (visiblePeople.length === 0) return null;
         const visibleFamilies = d.families.filter((f: TreeFamily) => {
             // Keep family only if NOT all parents are hidden
             const fatherHidden = f.fatherHandle ? hiddenHandles.has(f.fatherHandle) : true;
@@ -868,7 +866,24 @@ export default function TreeViewPage() {
                         <div className="flex items-center justify-center h-full">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                         </div>
-                    ) : layout && (
+                    ) : !layout ? (
+                        <div className="flex items-center justify-center h-full p-6">
+                            <div className="max-w-md text-center">
+                                <h2 className="text-base font-semibold">Chưa có dữ liệu gia phả</h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Màn hình này sẽ hiển thị dữ liệu thật từ API/Supabase khi bạn tạo thành viên và gia đình.
+                                </p>
+                                <div className="mt-3 flex items-center justify-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                                        Tải lại
+                                    </Button>
+                                    <Button size="sm" onClick={() => router.push('/people/new')}>
+                                        Tạo thành viên
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
                         <div style={{
                             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
                             transformOrigin: '0 0', width: layout.width, height: layout.height,
@@ -1280,7 +1295,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                     </div>
                     {isPatri && (
                         <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500
-                            text-white text-[8px] flex items-center justify-center shadow-sm font-bold ring-1 ring-white">Lê</span>
+                            text-white text-[8px] flex items-center justify-center shadow-sm font-bold ring-1 ring-white">Đỗ</span>
                     )}
                 </div>
 
