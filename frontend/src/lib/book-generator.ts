@@ -75,7 +75,7 @@ function formatYears(birth?: number, death?: number, isLiving?: boolean): string
 export function generateBookData(
     people: TreeNode[],
     families: TreeFamily[],
-    familyName: string = 'Lê Huy',
+    familyName: string = 'Đỗ Văn',
 ): BookData {
     const personMap = new Map(people.map(p => [p.handle, p]));
     const familyMap = new Map(families.map(f => [f.handle, f]));

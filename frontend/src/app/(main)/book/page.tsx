@@ -69,26 +69,24 @@ export default function BookPage() {
 
     useEffect(() => {
         const fetchAndGenerate = async () => {
-            let people: TreeNode[] = [];
-            let families: TreeFamily[] = [];
             try {
                 const treeData = await fetchTreeData();
-                if (treeData.people.length > 0) {
-                    people = treeData.people;
-                    families = treeData.families;
+                const people: TreeNode[] = treeData.people ?? [];
+                const families: TreeFamily[] = treeData.families ?? [];
+
+                if (people.length === 0) {
+                    setBookData(null);
+                    return;
                 }
-            } catch { /* fallback */ }
-            // Fallback: use mock data when Supabase is not configured
-            if (people.length === 0) {
-                const { getMockTreeData } = await import('@/lib/mock-data');
-                const mock = getMockTreeData();
-                people = mock.people;
-                families = mock.families;
+
+                const familyName = people[0].displayName?.split(' ').slice(0, 2).join(' ') || 'Dòng Họ';
+                const data = generateBookData(people, families, familyName);
+                setBookData(data);
+            } catch {
+                setBookData(null);
+            } finally {
+                setLoading(false);
             }
-            const familyName = people.length > 0 ? (people[0].displayName?.split(' ').slice(0, 2).join(' ') || 'Dòng Họ') : 'Dòng Họ';
-            const data = generateBookData(people, families, familyName);
-            setBookData(data);
-            setLoading(false);
         };
         fetchAndGenerate();
     }, []);
@@ -103,7 +101,26 @@ export default function BookPage() {
             </div>
         );
     }
-    if (!bookData) return null;
+    if (!bookData) {
+        return (
+            <div className="flex items-center justify-center min-h-[calc(100vh-80px)] p-6">
+                <div className="max-w-md text-center">
+                    <h1 className="text-lg font-semibold">Chưa có dữ liệu để tạo sách</h1>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        “Sách gia phả” sẽ hiển thị dữ liệu thật từ database khi bạn đã tạo thành viên/gia đình.
+                    </p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                        <Link href="/tree">
+                            <Button variant="outline" size="sm">Về cây gia phả</Button>
+                        </Link>
+                        <Link href="/people/new">
+                            <Button size="sm">Tạo thành viên</Button>
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // ═══ Dynamic height-based pagination ═══
     // A4 page: 297mm ≈ 1123px. Content area: px-12 py-12 = 48px each side

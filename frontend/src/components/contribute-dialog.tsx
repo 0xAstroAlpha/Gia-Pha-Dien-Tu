@@ -10,7 +10,7 @@ import { useAuth } from '@/components/auth-provider';
 const CONTRIBUTION_FIELDS = [
     { key: 'birth_year', label: 'Năm sinh', type: 'number', placeholder: 'VD: 1950' },
     { key: 'death_year', label: 'Năm mất', type: 'number', placeholder: 'VD: 2020' },
-    { key: 'display_name', label: 'Họ tên', type: 'text', placeholder: 'VD: Lê Văn A' },
+    { key: 'display_name', label: 'Họ tên', type: 'text', placeholder: 'VD: Đỗ Văn A' },
     { key: 'biography', label: 'Tiểu sử', type: 'textarea', placeholder: 'Thông tin tiểu sử...' },
     { key: 'occupation', label: 'Nghề nghiệp', type: 'text', placeholder: 'VD: Giáo viên' },
     { key: 'address', label: 'Địa chỉ', type: 'text', placeholder: 'VD: Hà Nội' },

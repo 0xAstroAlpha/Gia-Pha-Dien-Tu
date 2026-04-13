@@ -49,7 +49,7 @@ export default function HomePage() {
         <div className="space-y-6">
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Trang chủ</h1>
-                <p className="text-muted-foreground">Chào mừng đến với Gia phả dòng họ Lê Huy</p>
+                <p className="text-muted-foreground">Chào mừng đến với Gia phả dòng họ Đỗ Văn</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
