@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     email TEXT UNIQUE NOT NULL,
     display_name TEXT,
     role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'viewer')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
     person_handle TEXT,
     avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
@@ -91,29 +92,34 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 -- Auto-create profile on signup
 -- ⚠️ ĐỔI EMAIL ADMIN: thay 'your-admin@example.com' bằng email admin thật
-CREATE OR REPLACE FUNCTION handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     user_email TEXT;
 BEGIN
     user_email := COALESCE(NEW.email, NEW.raw_user_meta_data->>'email', '');
     IF user_email != '' THEN
-        INSERT INTO profiles (id, email, role)
+        INSERT INTO public.profiles (id, email, role, status)
         VALUES (
             NEW.id,
             user_email,
-            CASE WHEN user_email = 'your-admin@example.com' THEN 'admin' ELSE 'viewer' END
+            CASE WHEN user_email = 'your-admin@example.com' THEN 'admin' ELSE 'viewer' END,
+            'active'
         )
-        ON CONFLICT (email) DO UPDATE SET id = NEW.id;
+        ON CONFLICT (id) DO UPDATE
+        SET
+            email = EXCLUDED.email,
+            role = EXCLUDED.role,
+            status = COALESCE(public.profiles.status, EXCLUDED.status);
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
 -- ╔══════════════════════════════════════════════════════════╗
