@@ -500,23 +500,25 @@ export default function PersonProfilePage() {
 
             {/* Tabs */}
             <Tabs defaultValue="overview">
-                <TabsList>
-                    <TabsTrigger value="overview" className="gap-1">
-                        <User className="h-3.5 w-3.5" /> Tổng quan
-                    </TabsTrigger>
-                    <TabsTrigger value="relationships" className="gap-1">
-                        <Heart className="h-3.5 w-3.5" /> Quan hệ
-                    </TabsTrigger>
-                    <TabsTrigger value="media" className="gap-1">
-                        <Image className="h-3.5 w-3.5" /> Tư liệu
-                    </TabsTrigger>
-                    <TabsTrigger value="history" className="gap-1">
-                        <History className="h-3.5 w-3.5" /> Lịch sử
-                    </TabsTrigger>
-                    <TabsTrigger value="comments" className="gap-1">
-                        <MessageCircle className="h-3.5 w-3.5" /> Bình luận
-                    </TabsTrigger>
-                </TabsList>
+                <div className="overflow-x-auto pb-1">
+                    <TabsList className="min-w-max">
+                        <TabsTrigger value="overview" className="gap-1">
+                            <User className="h-3.5 w-3.5" /> Tổng quan
+                        </TabsTrigger>
+                        <TabsTrigger value="relationships" className="gap-1">
+                            <Heart className="h-3.5 w-3.5" /> Quan hệ
+                        </TabsTrigger>
+                        <TabsTrigger value="media" className="gap-1">
+                            <Image className="h-3.5 w-3.5" /> Tư liệu
+                        </TabsTrigger>
+                        <TabsTrigger value="history" className="gap-1">
+                            <History className="h-3.5 w-3.5" /> Lịch sử
+                        </TabsTrigger>
+                        <TabsTrigger value="comments" className="gap-1">
+                            <MessageCircle className="h-3.5 w-3.5" /> Bình luận
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
 
                 {/* Overview */}
                 <TabsContent value="overview" className="space-y-4">

@@ -66,7 +66,7 @@ export function ContributeDialog({ personHandle, personName, onClose }: Contribu
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-[420px] max-w-[95vw] animate-in zoom-in-95 fade-in duration-200"
+            <div className="max-h-[92vh] w-[min(420px,95vw)] overflow-y-auto rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 fade-in duration-200 dark:bg-slate-900 sm:max-h-[88vh]"
                 onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b">
@@ -82,7 +82,7 @@ export function ContributeDialog({ personHandle, personName, onClose }: Contribu
 
                 {sent ? (
                     /* Success state */
-                    <div className="p-8 text-center space-y-3">
+                    <div className="space-y-3 p-6 text-center sm:p-8">
                         <div className="w-14 h-14 rounded-full bg-green-100 mx-auto flex items-center justify-center">
                             <Send className="w-6 h-6 text-green-600" />
                         </div>
@@ -92,7 +92,7 @@ export function ContributeDialog({ personHandle, personName, onClose }: Contribu
                     </div>
                 ) : (
                     /* Form */
-                    <div className="p-5 space-y-4">
+                    <div className="space-y-4 p-4 sm:p-5">
                         {!isLoggedIn && (
                             <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400">
                                 ⚠️ Bạn cần <a href="/login" className="underline font-medium">đăng nhập</a> để đóng góp thông tin.

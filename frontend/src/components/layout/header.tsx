@@ -1,6 +1,7 @@
 'use client';
 
 import { Moon, Sun, LogOut, User, LogIn } from 'lucide-react';
+import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { NotificationBell } from '@/components/notification-bell';
 import { useAuth } from '@/components/auth-provider';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { navItems, adminItems } from '@/components/layout/sidebar';
+import { Menu } from 'lucide-react';
 
 export function Header() {
     const { theme, setTheme } = useTheme();
@@ -30,10 +34,71 @@ export function Header() {
         router.push('/login');
     };
 
+    const handleOpenProfile = () => {
+        if (profile?.person_handle) {
+            router.push(`/people/${profile.person_handle}`);
+            return;
+        }
+        if (profile?.id) {
+            router.push(`/directory/${profile.id}`);
+            return;
+        }
+        router.push('/directory');
+    };
+
     return (
         <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b bg-card/80 backdrop-blur-sm px-4 lg:px-6">
             {/* Left side */}
             <div className="flex items-center gap-2">
+                <Sheet>
+                    <SheetTrigger asChild>
+                        <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Mở menu điều hướng">
+                            <Menu className="h-4 w-4" />
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-[85vw] max-w-sm p-0">
+                        <SheetHeader className="border-b px-4 py-4">
+                            <SheetTitle>Điều hướng</SheetTitle>
+                        </SheetHeader>
+                        <nav className="space-y-1 px-3 py-4">
+                            {navItems.map((item) => {
+                                const Icon = item.icon;
+                                return (
+                                    <SheetClose key={item.href} asChild>
+                                        <Link
+                                            href={item.href}
+                                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                        >
+                                            <Icon className="h-4 w-4 shrink-0" />
+                                            {item.label}
+                                        </Link>
+                                    </SheetClose>
+                                );
+                            })}
+                            {isAdmin && (
+                                <>
+                                    <div className="px-3 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                        Quản trị
+                                    </div>
+                                    {adminItems.map((item) => {
+                                        const Icon = item.icon;
+                                        return (
+                                            <SheetClose key={item.href} asChild>
+                                                <Link
+                                                    href={item.href}
+                                                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                                >
+                                                    <Icon className="h-4 w-4 shrink-0" />
+                                                    {item.label}
+                                                </Link>
+                                            </SheetClose>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </nav>
+                    </SheetContent>
+                </Sheet>
                 <h2 className="text-sm font-medium text-muted-foreground">
                     Dòng họ Đỗ Văn
                 </h2>
@@ -84,7 +149,7 @@ export function Header() {
                                 </div>
                             </DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onSelect={handleOpenProfile}>
                                 <User className="mr-2 h-4 w-4" />
                                 Hồ sơ cá nhân
                             </DropdownMenuItem>

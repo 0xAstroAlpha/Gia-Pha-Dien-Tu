@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 
 interface Stats {
     people: number;
-    families: number;
+    patrilinealPeople: number;
     profiles: number;
     posts: number;
     events: number;
@@ -17,19 +17,31 @@ interface Stats {
 }
 
 export default function HomePage() {
-    const [stats, setStats] = useState<Stats>({ people: 0, families: 0, profiles: 0, posts: 0, events: 0, media: 0 });
+    const [stats, setStats] = useState<Stats>({ people: 0, patrilinealPeople: 0, profiles: 0, posts: 0, events: 0, media: 0 });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         async function fetchStats() {
             try {
-                const tables = ['people', 'families', 'profiles', 'posts', 'events', 'media'] as const;
+                const tables = ['people', 'profiles', 'posts', 'events', 'media'] as const;
                 const counts: Record<string, number> = {};
                 for (const t of tables) {
                     const { count } = await supabase.from(t).select('*', { count: 'exact', head: true });
                     counts[t] = count || 0;
                 }
-                setStats(counts as unknown as Stats);
+                const { count: patrilinealCount } = await supabase
+                    .from('people')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('is_patrilineal', true);
+
+                setStats({
+                    people: counts.people || 0,
+                    patrilinealPeople: patrilinealCount || 0,
+                    profiles: counts.profiles || 0,
+                    posts: counts.posts || 0,
+                    events: counts.events || 0,
+                    media: counts.media || 0,
+                });
             } catch { /* ignore */ }
             finally { setLoading(false); }
         }
@@ -37,8 +49,8 @@ export default function HomePage() {
     }, []);
 
     const cards = [
-        { title: 'Thành viên gia phả', icon: TreePine, value: stats.people, desc: 'Trong cơ sở dữ liệu', href: '/tree' },
-        { title: 'Dòng họ (families)', icon: Users, value: stats.families, desc: 'Gia đình đã ghi nhận', href: '/tree' },
+        { title: 'Toàn bộ thành viên', icon: TreePine, value: stats.people, desc: 'Trong cơ sở dữ liệu', href: '/tree' },
+        { title: 'Thành viên nội tộc', icon: Users, value: stats.patrilinealPeople, desc: 'Theo nhánh chính tộc', href: '/tree' },
         { title: 'Tài khoản', icon: Users, value: stats.profiles, desc: 'Người dùng đã đăng ký', href: '/directory' },
         { title: 'Bài viết', icon: Newspaper, value: stats.posts, desc: 'Bảng tin dòng họ', href: '/feed' },
         { title: 'Sự kiện', icon: CalendarDays, value: stats.events, desc: 'Hoạt động sắp tới', href: '/events' },

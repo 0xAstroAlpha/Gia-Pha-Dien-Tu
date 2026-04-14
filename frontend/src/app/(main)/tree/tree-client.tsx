@@ -14,7 +14,6 @@ import {
     updateFamilyChildren as supaUpdateFamilyChildren,
     moveChildToFamily as supaMoveChild,
     removeChildFromFamily as supaRemoveChild,
-    updatePersonLiving as supaUpdatePersonLiving,
     updatePerson as supaUpdatePerson,
 } from '@/lib/supabase-data';
 import {
@@ -25,6 +24,12 @@ import {
 
 type ViewMode = 'full' | 'ancestor' | 'descendant';
 type ZoomLevel = 'full' | 'compact' | 'mini';
+type DisplayGraphData = { people: TreeNode[]; families: TreeFamily[] };
+type FilteredGraphData = { filteredPeople: TreeNode[]; filteredFamilies: TreeFamily[] };
+
+function isFilteredGraphData(data: DisplayGraphData | FilteredGraphData): data is FilteredGraphData {
+    return 'filteredPeople' in data;
+}
 
 function getZoomLevel(scale: number): ZoomLevel {
     if (scale > 0.6) return 'full';
@@ -35,7 +40,7 @@ function getZoomLevel(scale: number): ZoomLevel {
 // === Branch Summary (F4) ===
 interface BranchSummary {
     parentHandle: string;
-    totalDescendants: number;
+    totalHidden: number;
     generationRange: [number, number];
     livingCount: number;
     deceasedCount: number;
@@ -48,49 +53,57 @@ function computeBranchSummary(
     families: TreeFamily[],
 ): BranchSummary {
     const personMap = new Map(people.map(p => [p.handle, p]));
-    const familyMap = new Map(families.map(f => [f.handle, f]));
+    const generationMap = computeTreeGenerations(people, families);
+    const parentFamiliesMap = new Map<string, TreeFamily[]>();
+    for (const fam of families) {
+        if (fam.fatherHandle) {
+            const arr = parentFamiliesMap.get(fam.fatherHandle) ?? [];
+            arr.push(fam);
+            parentFamiliesMap.set(fam.fatherHandle, arr);
+        }
+        if (fam.motherHandle) {
+            const arr = parentFamiliesMap.get(fam.motherHandle) ?? [];
+            arr.push(fam);
+            parentFamiliesMap.set(fam.motherHandle, arr);
+        }
+    }
     const visited = new Set<string>();
     let livingCount = 0, deceasedCount = 0, patrilinealCount = 0;
     let minGen = Infinity, maxGen = -Infinity;
 
-    function walk(h: string, gen: number) {
-        if (visited.has(h)) return;
+    function includePerson(h: string): TreeNode | null {
+        if (visited.has(h)) return null;
         visited.add(h);
         const person = personMap.get(h);
-        if (!person) return;
-        if (gen < minGen) minGen = gen;
-        if (gen > maxGen) maxGen = gen;
+        if (!person) return null;
+        const absoluteGen = (generationMap.get(h) ?? 0) + 1;
+        if (absoluteGen < minGen) minGen = absoluteGen;
+        if (absoluteGen > maxGen) maxGen = absoluteGen;
         if (person.isLiving) livingCount++; else deceasedCount++;
         if (person.isPatrilineal) patrilinealCount++;
-        for (const fId of person.families) {
-            const fam = familyMap.get(fId);
-            if (!fam) continue;
-            for (const ch of fam.children) walk(ch, gen + 1);
+        return person;
+    }
+
+    function walk(h: string) {
+        const person = includePerson(h);
+        if (!person) return;
+        for (const fam of parentFamiliesMap.get(person.handle) ?? []) {
+            for (const ch of fam.children) walk(ch);
         }
     }
 
-    // Walk from this person's children (not including the person itself)
-    const person = personMap.get(handle);
-    if (person) {
-        for (const fId of person.families) {
-            const fam = familyMap.get(fId);
-            if (!fam) continue;
-            // Also count spouse
-            if (fam.motherHandle && fam.motherHandle !== handle && !visited.has(fam.motherHandle)) {
-                const spouse = personMap.get(fam.motherHandle);
-                if (spouse) { visited.add(fam.motherHandle); if (spouse.isLiving) livingCount++; else deceasedCount++; }
-            }
-            if (fam.fatherHandle && fam.fatherHandle !== handle && !visited.has(fam.fatherHandle)) {
-                const spouse = personMap.get(fam.fatherHandle);
-                if (spouse) { visited.add(fam.fatherHandle); if (spouse.isLiving) livingCount++; else deceasedCount++; }
-            }
-            for (const ch of fam.children) walk(ch, 1);
+    // Count all hidden members from this collapsed branch (excluding the parent itself).
+    if (personMap.has(handle)) {
+        for (const fam of parentFamiliesMap.get(handle) ?? []) {
+            const spouseHandle = fam.fatherHandle === handle ? fam.motherHandle : fam.fatherHandle;
+            if (spouseHandle) includePerson(spouseHandle);
+            for (const ch of fam.children) walk(ch);
         }
     }
 
     return {
         parentHandle: handle,
-        totalDescendants: visited.size,
+        totalHidden: visited.size,
         generationRange: [minGen === Infinity ? 0 : minGen, maxGen === -Infinity ? 0 : maxGen],
         livingCount, deceasedCount, patrilinealCount,
     };
@@ -166,6 +179,7 @@ export default function TreeViewPage() {
     const [treeData, setTreeData] = useState<{ people: TreeNode[]; families: TreeFamily[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState<ViewMode>('full');
+    const [showPatrilinealOnly, setShowPatrilinealOnly] = useState(false);
     const [focusPerson, setFocusPerson] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
@@ -294,13 +308,36 @@ export default function TreeViewPage() {
     }, []);
 
     // Filtered data for view mode
-    const displayData = useMemo(() => {
+    const displayData = useMemo<DisplayGraphData | FilteredGraphData | null>(() => {
         if (!treeData) return null;
         if (viewMode === 'full' || !focusPerson) return treeData;
         if (viewMode === 'ancestor') return filterAncestors(focusPerson, treeData.people, treeData.families);
         if (viewMode === 'descendant') return filterDescendants(focusPerson, treeData.people, treeData.families);
         return treeData;
     }, [treeData, viewMode, focusPerson]);
+
+    const graphData = useMemo(() => {
+        if (!displayData) return null;
+        const normalized = isFilteredGraphData(displayData)
+            ? { people: displayData.filteredPeople, families: displayData.filteredFamilies }
+            : displayData;
+        if (!showPatrilinealOnly) return normalized;
+
+        const people = normalized.people.filter((p) => p.isPatrilineal);
+        const visibleHandles = new Set(people.map((p) => p.handle));
+        const families = normalized.families
+            .map((f) => ({
+                ...f,
+                children: f.children.filter((ch) => visibleHandles.has(ch)),
+            }))
+            .filter((f) =>
+                (f.fatherHandle && visibleHandles.has(f.fatherHandle))
+                || (f.motherHandle && visibleHandles.has(f.motherHandle))
+                || f.children.length > 0,
+            );
+
+        return { people, families };
+    }, [displayData, showPatrilinealOnly]);
 
     // F1: Zoom level
     const zoomLevel = useMemo<ZoomLevel>(() => getZoomLevel(transform.scale), [transform.scale]);
@@ -515,21 +552,19 @@ export default function TreeViewPage() {
     // Layout always uses the full display graph so card positions do not reflow when collapsing branches.
     // Collapse only hides rendering (and trims lines into hidden subtrees).
     const layout = useMemo<LayoutResult | null>(() => {
-        if (!displayData) return null;
-        const d = 'filteredPeople' in displayData
-            ? { people: (displayData as any).filteredPeople, families: (displayData as any).filteredFamilies }
-            : displayData;
+        if (!graphData) return null;
+        const d = graphData;
         if (d.people.length === 0) return null;
         return computeLayout(d.people, d.families);
-    }, [displayData]);
+    }, [graphData]);
 
 
     // F3: Stats for people not hidden by collapse
     const treeStats = useMemo<TreeStats | null>(() => {
-        if (!layout || !treeData) return null;
+        if (!layout || !graphData) return null;
         const nodes = layout.nodes.filter(n => !hiddenHandles.has(n.node.handle));
-        return computeTreeStats(nodes, treeData.families);
-    }, [layout, treeData, hiddenHandles]);
+        return computeTreeStats(nodes, graphData.families);
+    }, [layout, graphData, hiddenHandles]);
 
     // F2: Generation stats for headers (non-hidden only)
     const generationStats = useMemo(() => {
@@ -820,15 +855,18 @@ export default function TreeViewPage() {
     // connPath kept for compatibility but unused with batched rendering
 
     return (
-        <div className="flex flex-col h-[calc(100vh-80px)]">
+        <div className="flex min-h-[calc(100vh-96px)] flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between flex-wrap gap-2 px-1 pb-2">
+            <div className="flex items-start justify-between gap-2 px-1 pb-2 flex-wrap">
                 <div>
                     <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
                         <TreePine className="h-5 w-5" /> Cây gia phả
                     </h1>
                     <p className="text-muted-foreground text-xs">
                         {layout ? `${layout.nodes.length} thành viên` : 'Đang tải...'}
+                        {showPatrilinealOnly && layout && (
+                            <span className="ml-1 text-emerald-600">• Nội tộc</span>
+                        )}
                         {viewMode !== 'full' && focusPerson && (
                             <span className="ml-1 text-blue-500">
                                 • {viewMode === 'ancestor' ? 'Tổ tiên' : 'Hậu duệ'} của{' '}
@@ -837,9 +875,9 @@ export default function TreeViewPage() {
                         )}
                     </p>
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex w-full items-center gap-1.5 flex-wrap lg:w-auto lg:justify-end">
                     {/* View modes */}
-                    <div className="flex rounded-lg border overflow-hidden text-xs">
+                    <div className="flex max-w-full overflow-x-auto rounded-lg border text-xs">
                         {([['full', 'Toàn cảnh', Eye], ['ancestor', 'Tổ tiên', Users], ['descendant', 'Hậu duệ', GitBranch]] as const).map(([mode, label, Icon]) => (
                             <button key={mode} onClick={() => changeViewMode(mode)}
                                 className={`px-2.5 py-1.5 font-medium flex items-center gap-1 transition-colors ${mode !== 'full' ? 'border-l' : ''} ${viewMode === mode ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
@@ -847,16 +885,25 @@ export default function TreeViewPage() {
                             </button>
                         ))}
                     </div>
+                    <Button
+                        variant={showPatrilinealOnly ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() => setShowPatrilinealOnly((v) => !v)}
+                    >
+                        <TreePine className="h-3.5 w-3.5" />
+                        Nội tộc
+                    </Button>
                     {/* Search */}
-                    <div className="relative">
-                        <div className="relative w-44">
+                    <div className="relative w-full sm:w-auto">
+                        <div className="relative w-full sm:w-44">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                             <Input placeholder="Tìm kiếm..." value={searchQuery}
                                 onChange={e => { setSearchQuery(e.target.value); setShowSearch(true); }}
-                                onFocus={() => setShowSearch(true)} className="pl-8 h-8 text-xs" />
+                                onFocus={() => setShowSearch(true)} className="h-8 w-full pl-8 text-xs" />
                         </div>
                         {showSearch && searchResults.length > 0 && (
-                            <Card className="absolute z-50 w-56 right-0 top-10 shadow-lg">
+                            <Card className="absolute right-0 top-10 z-50 w-full shadow-lg sm:w-56">
                                 <CardContent className="p-1 max-h-52 overflow-y-auto">
                                     {searchResults.map(p => (
                                         <button key={p.handle} onClick={() => {
@@ -876,7 +923,7 @@ export default function TreeViewPage() {
                         )}
                     </div>
                     {/* Controls */}
-                    <div className="flex gap-0.5">
+                    <div className="flex gap-0.5 flex-wrap">
                         <Button variant="outline" size="icon" className="h-8 w-8" title="Thu gọn tất cả" onClick={collapseAll}><ChevronsDownUp className="h-3.5 w-3.5" /></Button>
                         <Button variant="outline" size="icon" className="h-8 w-8" title="Mở rộng tất cả" onClick={expandAll}><ChevronsUpDown className="h-3.5 w-3.5" /></Button>
                         <div className="w-px bg-border mx-0.5" />
@@ -910,7 +957,7 @@ export default function TreeViewPage() {
             </div>
 
             {/* Tree viewport + Editor panel row */}
-            <div className="flex-1 flex gap-0 min-h-0">
+            <div className="relative flex flex-1 gap-0 min-h-0">
                 <div ref={viewportRef}
                     className="flex-1 relative overflow-hidden rounded-xl border-2 bg-gradient-to-br from-background to-muted/30 cursor-grab active:cursor-grabbing select-none"
                     onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
@@ -1040,10 +1087,10 @@ export default function TreeViewPage() {
 
                     {/* Focus person selector */}
                     {viewMode !== 'full' && treeData && (
-                        <div className="absolute bottom-2 right-2 bg-background/90 backdrop-blur border rounded-lg px-2 py-1.5 flex items-center gap-1.5 text-xs">
+                        <div className="absolute bottom-2 right-2 max-w-[calc(100%-1rem)] bg-background/90 backdrop-blur border rounded-lg px-2 py-1.5 flex items-center gap-1.5 text-xs">
                             <span className="text-muted-foreground">Gốc:</span>
                             <select value={focusPerson || ''} onChange={e => setFocusPerson(e.target.value)}
-                                className="border rounded px-1.5 py-0.5 text-xs bg-background max-w-[140px]">
+                                className="max-w-[120px] border rounded bg-background px-1.5 py-0.5 text-xs sm:max-w-[140px]">
                                 {treeData.people.map(p => (
                                     <option key={p.handle} value={p.handle}>{p.displayName}</option>
                                 ))}
@@ -1092,13 +1139,6 @@ export default function TreeViewPage() {
                                 supaRemoveChild(childHandle, familyHandle, prev.families);
                                 return { ...prev, families };
                             });
-                        }}
-                        onToggleLiving={(handle, isLiving) => {
-                            setTreeData(prev => prev ? {
-                                ...prev,
-                                people: prev.people.map(p => p.handle === handle ? { ...p, isLiving } : p)
-                            } : null);
-                            supaUpdatePersonLiving(handle, isLiving);
                         }}
                         onUpdatePerson={(handle, fields) => {
                             setTreeData(prev => {
@@ -1377,7 +1417,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5">
                         {node.birthYear
-                            ? `${node.birthYear}${node.deathYear ? ` — ${node.deathYear}` : node.isLiving ? ' — nay' : ''}`
+                            ? `${node.birthYear}${node.deathYear ? ` — ${node.deathYear}` : node.isLiving ? ' — nay' : ' - Chưa rõ'}`
                             : '—'}
                     </p>
                     <div className="mt-0.5 flex items-center gap-1 whitespace-nowrap">
@@ -1428,11 +1468,11 @@ function BranchSummaryCard({ summary, parentNode, zoomLevel, onExpand }: {
                 onClick={(e) => { e.stopPropagation(); onExpand(); }}
             >
                 <div className="w-4 h-4 rounded bg-amber-400 shadow-sm flex items-center justify-center">
-                    <span className="text-[7px] text-white font-bold">{summary.totalDescendants}</span>
+                    <span className="text-[7px] text-white font-bold">{summary.totalHidden}</span>
                 </div>
                 <div className="hidden group-hover:block absolute -top-10 left-1/2 -translate-x-1/2 z-50
                     bg-slate-900 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap pointer-events-none">
-                    📦 {summary.totalDescendants} người · Đời {summary.generationRange[0]}→{summary.generationRange[1]}
+                    📦 {summary.totalHidden} người · Đời {summary.generationRange[0]}→{summary.generationRange[1]}
                 </div>
             </div>
         );
@@ -1452,7 +1492,7 @@ function BranchSummaryCard({ summary, parentNode, zoomLevel, onExpand }: {
                 </div>
                 <div className="flex-1 min-w-0">
                     <p className="font-semibold text-[11px] leading-tight text-amber-900">
-                        📦 {summary.totalDescendants} người
+                        📦 {summary.totalHidden} người
                     </p>
                     <p className="text-[10px] text-amber-700 mt-0.5">
                         Đời {summary.generationRange[0]} → {summary.generationRange[1]}
@@ -1510,7 +1550,7 @@ function StatsOverlay({ stats, onClose }: { stats: TreeStats; onClose: () => voi
     const maxCount = Math.max(...stats.perGeneration.map(g => g.count));
 
     return (
-        <div className="absolute top-3 right-3 w-64 bg-white/95 backdrop-blur-lg border border-slate-200
+        <div className="absolute top-3 right-3 w-[calc(100%-1.5rem)] max-w-64 bg-white/95 backdrop-blur-lg border border-slate-200
             rounded-xl shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 z-40 pointer-events-auto">
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
@@ -1588,13 +1628,12 @@ function StatsOverlay({ stats, onClose }: { stats: TreeStats; onClose: () => voi
 }
 
 // === Editor Panel Component ===
-function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, onRemoveChild, onToggleLiving, onUpdatePerson, onReset, onClose }: {
+function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, onRemoveChild, onUpdatePerson, onReset, onClose }: {
     selectedCard: string | null;
     treeData: { people: TreeNode[]; families: TreeFamily[] } | null;
     onReorderChildren: (familyHandle: string, newOrder: string[]) => void;
     onMoveChild: (childHandle: string, fromFamily: string, toFamily: string) => void;
     onRemoveChild: (childHandle: string, familyHandle: string) => void;
-    onToggleLiving: (handle: string, isLiving: boolean) => void;
     onUpdatePerson: (handle: string, fields: Record<string, unknown>) => void;
     onReset: () => void;
     onClose: () => void;
@@ -1602,8 +1641,10 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     const [editName, setEditName] = useState('');
     const [editBirthYear, setEditBirthYear] = useState('');
     const [editDeathYear, setEditDeathYear] = useState('');
+    const [editIsLiving, setEditIsLiving] = useState(true);
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const [parentSearch, setParentSearch] = useState('');
     const [showParentDropdown, setShowParentDropdown] = useState(false);
     const parentSearchRef = useRef<HTMLDivElement>(null);
@@ -1619,7 +1660,9 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
             setEditName(person.displayName || '');
             setEditBirthYear(person.birthYear?.toString() || '');
             setEditDeathYear(person.deathYear?.toString() || '');
+            setEditIsLiving(person.isLiving);
             setDirty(false);
+            setSaveError(null);
             setParentSearch('');
             setShowParentDropdown(false);
         }
@@ -1679,12 +1722,21 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     const handleSave = async () => {
         if (!person || !dirty) return;
         setSaving(true);
+        setSaveError(null);
         const fields: Record<string, unknown> = {};
         if (editName !== person.displayName) fields.displayName = editName;
         const newBirth = editBirthYear ? parseInt(editBirthYear) : null;
         if (newBirth !== (person.birthYear ?? null)) fields.birthYear = newBirth;
         const newDeath = editDeathYear ? parseInt(editDeathYear) : null;
         if (newDeath !== (person.deathYear ?? null)) fields.deathYear = newDeath;
+        if (editIsLiving && newDeath !== null) {
+            setSaveError('Không thể đặt "Còn sống" khi đã có năm mất. Hãy xóa năm mất trước khi lưu.');
+            setSaving(false);
+            return;
+        }
+        if (editIsLiving !== person.isLiving) {
+            fields.isLiving = editIsLiving;
+        }
         if (Object.keys(fields).length > 0) {
             onUpdatePerson(person.handle, fields);
         }
@@ -1693,7 +1745,7 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     };
 
     return (
-        <div className="w-72 bg-background border-l flex flex-col overflow-hidden flex-shrink-0">
+        <div className="absolute inset-y-0 right-0 z-30 w-full max-w-sm border-l bg-background shadow-xl flex flex-col overflow-hidden flex-shrink-0 lg:static lg:z-auto lg:w-72 lg:max-w-none lg:shadow-none">
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b bg-blue-50">
                 <div className="flex items-center gap-2">
@@ -1749,7 +1801,14 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                             <div className="flex-1">
                                 <label className="text-xs text-muted-foreground">Năm mất</label>
                                 <input type="number" className="w-full border rounded px-2 py-1 text-sm bg-background" value={editDeathYear}
-                                    onChange={e => { setEditDeathYear(e.target.value); setDirty(true); }} placeholder="—" />
+                                    onChange={e => {
+                                        const value = e.target.value;
+                                        setEditDeathYear(value);
+                                        // Having death year implies deceased status in this editor flow.
+                                        if (value.trim()) setEditIsLiving(false);
+                                        setSaveError(null);
+                                        setDirty(true);
+                                    }} placeholder="—" />
                             </div>
                         </div>
 
@@ -1757,15 +1816,28 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Trạng thái:</span>
                             <button
-                                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${person.isLiving
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${editIsLiving
                                     ? 'bg-green-100 text-green-700 hover:bg-green-200'
                                     : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                                     }`}
-                                onClick={() => onToggleLiving(person.handle, !person.isLiving)}
+                                onClick={() => {
+                                    const next = !editIsLiving;
+                                    if (next && editDeathYear.trim()) {
+                                        setSaveError('Muốn chuyển về "Còn sống", bạn cần xóa năm mất trước.');
+                                        return;
+                                    }
+                                    setSaveError(null);
+                                    setEditIsLiving(next);
+                                    setDirty(true);
+                                }}
                             >
-                                {person.isLiving ? '● Còn sống' : '○ Đã mất'}
+                                {editIsLiving ? '● Còn sống' : '○ Đã mất'}
                             </button>
                         </div>
+
+                        {saveError && (
+                            <p className="text-xs text-red-600">{saveError}</p>
+                        )}
 
                         {/* Save button */}
                         {dirty && (
@@ -1773,7 +1845,7 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                                 className="w-full flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                                 onClick={handleSave} disabled={saving}
                             >
-                                <Save className="h-3.5 w-3.5" />{saving ? 'Đang lưu...' : 'Lưu thay đổi → Supabase'}
+                                <Save className="h-3.5 w-3.5" />{saving ? 'Đang lưu...' : 'Lưu thay đổi'}
                             </button>
                         )}
                     </div>

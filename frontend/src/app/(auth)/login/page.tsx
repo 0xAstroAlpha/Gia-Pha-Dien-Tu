@@ -65,14 +65,14 @@ export default function LoginPage() {
     };
 
     return (
-        <Card className="border-0 shadow-2xl">
+        <Card className="border-0 shadow-xl sm:shadow-2xl">
             <CardHeader className="text-center space-y-2">
                 <div className="flex justify-center">
                     <div className="rounded-full bg-primary/10 p-3">
                         <TreePine className="h-8 w-8 text-primary" />
                     </div>
                 </div>
-                <CardTitle className="text-2xl font-bold">Gia phả họ Đỗ Văn</CardTitle>
+                <CardTitle className="text-xl font-bold sm:text-2xl">Gia phả họ Đỗ Văn</CardTitle>
                 <CardDescription>
                     {mode === 'login'
                         ? 'Đăng nhập để quản lý & đóng góp thông tin'
@@ -80,7 +80,7 @@ export default function LoginPage() {
                     }
                 </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6">
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                     {error && (
                         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>

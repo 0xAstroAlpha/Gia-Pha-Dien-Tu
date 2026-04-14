@@ -31,7 +31,12 @@ export default function AuditLogPage() {
         setLoading(false);
     }, []);
 
-    useEffect(() => { fetchLogs(); }, [fetchLogs]);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            void fetchLogs();
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [fetchLogs]);
 
     const filtered = logs.filter(l =>
         (l.action as string || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -40,14 +45,14 @@ export default function AuditLogPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><FileText className="h-6 w-6" />Audit Log</h1>
                     <p className="text-muted-foreground">Lịch sử hoạt động hệ thống</p>
                 </div>
                 <Button variant="outline" onClick={fetchLogs}><RefreshCw className="h-4 w-4 mr-2" />Làm mới</Button>
             </div>
-            <div className="relative max-w-sm">
+            <div className="relative w-full max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Lọc theo hành động, entity..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
@@ -56,23 +61,49 @@ export default function AuditLogPage() {
                     {loading ? (
                         <div className="flex items-center justify-center h-48"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
                     ) : (
-                        <Table>
-                            <TableHeader><TableRow>
-                                <TableHead>Thời gian</TableHead><TableHead>Hành động</TableHead><TableHead>Loại</TableHead><TableHead>Entity ID</TableHead><TableHead>Người thực hiện</TableHead>
-                            </TableRow></TableHeader>
-                            <TableBody>
+                        <>
+                            <div className="space-y-3 p-3 md:hidden">
                                 {filtered.map(log => (
-                                    <TableRow key={log.id as string}>
-                                        <TableCell className="text-xs whitespace-nowrap">{new Date(log.created_at as string).toLocaleString('vi-VN')}</TableCell>
-                                        <TableCell><Badge variant="secondary" className={ACTION_COLORS[log.action as string] || ''}>{log.action as string}</Badge></TableCell>
-                                        <TableCell className="font-mono text-xs">{log.entity_type as string}</TableCell>
-                                        <TableCell className="font-mono text-xs truncate max-w-[120px]">{(log.entity_id as string) || '—'}</TableCell>
-                                        <TableCell>{(log.actor as Record<string, unknown>)?.display_name as string || (log.actor as Record<string, unknown>)?.email as string || '—'}</TableCell>
-                                    </TableRow>
+                                    <div key={log.id as string} className="rounded-lg border p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <Badge variant="secondary" className={ACTION_COLORS[log.action as string] || ''}>
+                                                {log.action as string}
+                                            </Badge>
+                                            <span className="text-xs text-muted-foreground">
+                                                {new Date(log.created_at as string).toLocaleString('vi-VN')}
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-xs font-mono">{log.entity_type as string}</p>
+                                        <p className="mt-1 truncate text-xs text-muted-foreground font-mono">{(log.entity_id as string) || '—'}</p>
+                                        <p className="mt-2 text-sm">
+                                            {(log.actor as Record<string, unknown>)?.display_name as string || (log.actor as Record<string, unknown>)?.email as string || '—'}
+                                        </p>
+                                    </div>
                                 ))}
-                                {filtered.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Chưa có log nào</TableCell></TableRow>}
-                            </TableBody>
-                        </Table>
+                                {filtered.length === 0 && (
+                                    <div className="rounded-lg border px-4 py-8 text-center text-muted-foreground">Chưa có log nào</div>
+                                )}
+                            </div>
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader><TableRow>
+                                        <TableHead>Thời gian</TableHead><TableHead>Hành động</TableHead><TableHead>Loại</TableHead><TableHead>Entity ID</TableHead><TableHead>Người thực hiện</TableHead>
+                                    </TableRow></TableHeader>
+                                    <TableBody>
+                                        {filtered.map(log => (
+                                            <TableRow key={log.id as string}>
+                                                <TableCell className="text-xs whitespace-nowrap">{new Date(log.created_at as string).toLocaleString('vi-VN')}</TableCell>
+                                                <TableCell><Badge variant="secondary" className={ACTION_COLORS[log.action as string] || ''}>{log.action as string}</Badge></TableCell>
+                                                <TableCell className="font-mono text-xs">{log.entity_type as string}</TableCell>
+                                                <TableCell className="font-mono text-xs truncate max-w-[120px]">{(log.entity_id as string) || '—'}</TableCell>
+                                                <TableCell>{(log.actor as Record<string, unknown>)?.display_name as string || (log.actor as Record<string, unknown>)?.email as string || '—'}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {filtered.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Chưa có log nào</TableCell></TableRow>}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </>
                     )}
                 </CardContent>
             </Card>

@@ -79,7 +79,7 @@ export const FAMILY_GROUP_GAP = 4;
 export const INTRA_FAMILY_SIBLING_GAP = 18;
 export const V_SPACE = 80;
 /** Default horizontal gap between vo/chong cards (heart sits in this gap); use getCoupleGapForFamily for dynamic. */
-export const COUPLE_GAP_BASE = 14;
+export const COUPLE_GAP_BASE = 22;
 /** @deprecated Use COUPLE_GAP_BASE or getCoupleGapForFamily -- kept for callers expecting COUPLE_GAP */
 export const COUPLE_GAP = COUPLE_GAP_BASE;
 const COUPLE_GAP_PER_EXTRA_MARRIAGE = 10;

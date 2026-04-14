@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Check, X, Clock, MessageSquarePlus, ChevronDown, Filter } from 'lucide-react';
+import { Check, X, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth-provider';
@@ -49,7 +49,12 @@ export default function AdminEditsPage() {
             router.push('/tree');
             return;
         }
-        if (!authLoading && isAdmin) fetchContributions();
+        if (!authLoading && isAdmin) {
+            const timer = setTimeout(() => {
+                void fetchContributions();
+            }, 0);
+            return () => clearTimeout(timer);
+        }
     }, [authLoading, isAdmin, fetchContributions, router]);
 
     const handleAction = async (id: string, action: 'approved' | 'rejected') => {
@@ -81,8 +86,8 @@ export default function AdminEditsPage() {
     if (authLoading) return <div className="flex items-center justify-center h-96"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
 
     return (
-        <div className="max-w-4xl mx-auto p-4 space-y-4">
-            <div className="flex items-center justify-between">
+        <div className="mx-auto max-w-4xl space-y-4 px-0 sm:px-2">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                     <h1 className="text-xl font-bold flex items-center gap-2">
                         <MessageSquarePlus className="h-5 w-5" /> Đóng góp từ thành viên
@@ -91,10 +96,10 @@ export default function AdminEditsPage() {
                         {pendingCount > 0 ? `${pendingCount} đóng góp chờ duyệt` : 'Không có đóng góp nào chờ duyệt'}
                     </p>
                 </div>
-                <div className="flex items-center gap-1 border rounded-lg overflow-hidden text-xs">
+                <div className="flex w-full sm:w-auto items-center gap-1 overflow-x-auto rounded-lg border text-xs">
                     {(['pending', 'approved', 'rejected', 'all'] as const).map(f => (
                         <button key={f} onClick={() => setFilter(f)}
-                            className={`px-3 py-1.5 font-medium transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
+                            className={`shrink-0 px-3 py-1.5 font-medium transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
                             {f === 'all' ? 'Tất cả' : statusLabels[f]}
                         </button>
                     ))}
@@ -116,7 +121,7 @@ export default function AdminEditsPage() {
                     {contributions.map(c => (
                         <Card key={c.id} className={`transition-all ${c.status === 'pending' ? 'border-amber-300 shadow-sm' : ''}`}>
                             <CardContent className="p-4">
-                                <div className="flex items-start justify-between gap-3">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="flex-1 min-w-0 space-y-2">
                                         {/* Header */}
                                         <div className="flex items-center gap-2 flex-wrap">
@@ -153,19 +158,19 @@ export default function AdminEditsPage() {
 
                                     {/* Actions for pending */}
                                     {c.status === 'pending' && (
-                                        <div className="flex flex-col gap-1.5 flex-shrink-0">
+                                        <div className="grid grid-cols-1 gap-1.5 sm:flex sm:w-36 sm:flex-col sm:flex-shrink-0">
                                             <Input
                                                 placeholder="Ghi chú..."
-                                                className="text-xs h-7 w-32"
+                                                className="h-8 text-xs sm:h-7 sm:w-32"
                                                 value={adminNotes[c.id] || ''}
                                                 onChange={e => setAdminNotes(prev => ({ ...prev, [c.id]: e.target.value }))}
                                             />
-                                            <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                                            <Button size="sm" className="h-8 text-xs bg-green-600 hover:bg-green-700 sm:h-7"
                                                 disabled={processingId === c.id}
                                                 onClick={() => handleAction(c.id, 'approved')}>
                                                 <Check className="w-3 h-3 mr-1" /> Duyệt
                                             </Button>
-                                            <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                                            <Button size="sm" variant="outline" className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50 sm:h-7"
                                                 disabled={processingId === c.id}
                                                 onClick={() => handleAction(c.id, 'rejected')}>
                                                 <X className="w-3 h-3 mr-1" /> Từ chối

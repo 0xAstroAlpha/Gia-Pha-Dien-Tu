@@ -79,31 +79,52 @@ export function generateBookData(
 ): BookData {
     const personMap = new Map(people.map(p => [p.handle, p]));
     const familyMap = new Map(families.map(f => [f.handle, f]));
+    const ownFamiliesByParent = new Map<string, TreeFamily[]>();
+    for (const fam of families) {
+        if (fam.fatherHandle) {
+            const arr = ownFamiliesByParent.get(fam.fatherHandle) ?? [];
+            arr.push(fam);
+            ownFamiliesByParent.set(fam.fatherHandle, arr);
+        }
+        if (fam.motherHandle) {
+            const arr = ownFamiliesByParent.get(fam.motherHandle) ?? [];
+            arr.push(fam);
+            ownFamiliesByParent.set(fam.motherHandle, arr);
+        }
+    }
 
     // ── Step 1: Assign generations via BFS from roots ──
     const generations = new Map<string, number>();
     const childOfFamily = new Set<string>();
+    const parentFamiliesByChild = new Map<string, TreeFamily[]>();
     for (const f of families) {
-        for (const ch of f.children) childOfFamily.add(ch);
+        for (const ch of f.children) {
+            childOfFamily.add(ch);
+            const arr = parentFamiliesByChild.get(ch) ?? [];
+            arr.push(f);
+            parentFamiliesByChild.set(ch, arr);
+        }
     }
 
     // Find root persons (not a child of any family)
     const roots = people.filter(p => !childOfFamily.has(p.handle));
 
     function setGen(handle: string, gen: number) {
-        if (generations.has(handle)) return;
+        const current = generations.get(handle);
+        if (current !== undefined && current >= gen) return;
         generations.set(handle, gen);
         const person = personMap.get(handle);
         if (!person) return;
-        for (const famId of person.families) {
-            const fam = familyMap.get(famId);
-            if (!fam) continue;
+        for (const fam of families) {
+            if (fam.fatherHandle !== handle && fam.motherHandle !== handle) continue;
             // Spouse gets same generation
             if (fam.fatherHandle && fam.fatherHandle !== handle) {
-                if (!generations.has(fam.fatherHandle)) generations.set(fam.fatherHandle, gen);
+                const spouseCurrent = generations.get(fam.fatherHandle);
+                if (spouseCurrent === undefined || spouseCurrent > gen) generations.set(fam.fatherHandle, gen);
             }
             if (fam.motherHandle && fam.motherHandle !== handle) {
-                if (!generations.has(fam.motherHandle)) generations.set(fam.motherHandle, gen);
+                const spouseCurrent = generations.get(fam.motherHandle);
+                if (spouseCurrent === undefined || spouseCurrent > gen) generations.set(fam.motherHandle, gen);
             }
             // Children get gen+1
             for (const ch of fam.children) setGen(ch, gen + 1);
@@ -116,6 +137,32 @@ export function generateBookData(
     // Catch any unassigned
     for (const p of people) {
         if (!generations.has(p.handle)) generations.set(p.handle, 0);
+    }
+
+    // Normalize from parent links in families: each child should be min(parentGen)+1.
+    // This avoids stale generations when person.families / parent_families arrays drift.
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const p of people) {
+            const parentFams = parentFamiliesByChild.get(p.handle) ?? [];
+            if (parentFams.length === 0) continue;
+            let expectedGen = Number.POSITIVE_INFINITY;
+            for (const fam of parentFams) {
+                const parentGens: number[] = [];
+                if (fam.fatherHandle && generations.has(fam.fatherHandle)) parentGens.push(generations.get(fam.fatherHandle)!);
+                if (fam.motherHandle && generations.has(fam.motherHandle)) parentGens.push(generations.get(fam.motherHandle)!);
+                if (parentGens.length === 0) continue;
+                const famExpected = Math.min(...parentGens) + 1;
+                if (famExpected < expectedGen) expectedGen = famExpected;
+            }
+            if (!Number.isFinite(expectedGen)) continue;
+            const current = generations.get(p.handle) ?? 0;
+            if (current !== expectedGen) {
+                generations.set(p.handle, expectedGen);
+                changed = true;
+            }
+        }
     }
 
     // ── Step 2: Build person entries ──
@@ -152,15 +199,20 @@ export function generateBookData(
             }
         }
 
-        // Find spouse and children from families where this person is a parent
+        // Find spouse and children from families where this person is a parent.
+        // Prefer authoritative families graph; fallback to person.families if needed.
         let spouseName: string | undefined;
         let spouseYears: string | undefined;
         let spouseNote: string | undefined;
         const children: BookPerson['children'] = [];
+        const seenChildren = new Set<string>();
 
-        for (const famId of p.families) {
-            const fam = familyMap.get(famId);
-            if (!fam) continue;
+        const ownFamilies = ownFamiliesByParent.get(p.handle) ?? [];
+        const sourceFamilies = ownFamilies.length > 0
+            ? ownFamilies
+            : p.families.map((famId) => familyMap.get(famId)).filter((fam): fam is TreeFamily => !!fam);
+
+        for (const fam of sourceFamilies) {
 
             // Determine spouse
             const spouseHandle = fam.fatherHandle === p.handle ? fam.motherHandle : fam.fatherHandle;
@@ -176,6 +228,8 @@ export function generateBookData(
             // Children
             for (let i = 0; i < fam.children.length; i++) {
                 const childHandle = fam.children[i];
+                if (seenChildren.has(childHandle)) continue;
+                seenChildren.add(childHandle);
                 const child = personMap.get(childHandle);
                 if (child) {
                     children.push({
@@ -189,12 +243,11 @@ export function generateBookData(
 
         // Find child index within parent family
         let childIndex: number | undefined;
-        if (p.parentFamilies.length > 0) {
-            const pf = familyMap.get(p.parentFamilies[0]);
-            if (pf) {
-                const idx = pf.children.indexOf(p.handle);
-                if (idx >= 0) childIndex = idx + 1;
-            }
+        const parentFamilies = parentFamiliesByChild.get(p.handle) ?? [];
+        if (parentFamilies.length > 0) {
+            const pf = parentFamilies[0];
+            const idx = pf.children.indexOf(p.handle);
+            if (idx >= 0) childIndex = idx + 1;
         }
 
         bookPersons.push({

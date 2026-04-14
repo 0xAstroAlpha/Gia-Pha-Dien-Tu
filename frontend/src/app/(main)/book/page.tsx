@@ -209,8 +209,8 @@ export default function BookPage() {
         }
     }
 
-    // Paginate appendix: each entry ~22px tall, 3-col layout, ~30 entries/col = ~90/page
-    const APPENDIX_PAGE_LIMIT = 90;
+    // Paginate appendix: vertical single-column list (~30 entries/page)
+    const APPENDIX_PAGE_LIMIT = 30;
     const allNames = bookData.nameIndex;
     const totalNames = allNames.length;
     if (totalNames <= APPENDIX_PAGE_LIMIT) {
@@ -240,8 +240,8 @@ export default function BookPage() {
         <div className="min-w-0 w-full overflow-hidden">
             {/* ═══ TOOLBAR ═══ */}
             <div className="no-print sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b shadow-sm">
-                <div className="px-4 py-2.5 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+                    <div className="flex items-center justify-between gap-2 sm:justify-start">
                         <Link href="/tree">
                             <Button variant="ghost" size="sm">
                                 <ArrowLeft className="w-4 h-4 mr-1" /> Cây gia phả
@@ -251,7 +251,7 @@ export default function BookPage() {
                             {bookData.totalMembers} thành viên · {bookData.totalGenerations} đời · {sections.length} trang
                         </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex w-full items-center gap-1.5 sm:w-auto">
                         {/* Theme picker */}
                         <div className="relative">
                             <Button variant="outline" size="sm" className="gap-1.5"
@@ -261,7 +261,7 @@ export default function BookPage() {
                                 <span className="w-3 h-3 rounded-full border" style={{ background: t.swatch }} />
                             </Button>
                             {showThemePicker && (
-                                <div className="absolute right-0 top-full mt-1 bg-white border rounded-xl shadow-xl p-3 min-w-[200px] z-50">
+                                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] max-w-[calc(100vw-2rem)] rounded-xl border bg-white p-3 shadow-xl">
                                     <p className="text-xs font-medium text-muted-foreground mb-2">Bảng màu</p>
                                     <div className="space-y-1">
                                         {Object.entries(THEMES).map(([key, th]) => (
@@ -287,14 +287,14 @@ export default function BookPage() {
                         </div>
 
                         {/* Preview toggle */}
-                        <Button variant={previewMode ? 'default' : 'outline'} size="sm" className="gap-1.5"
+                        <Button variant={previewMode ? 'default' : 'outline'} size="sm" className="flex-1 gap-1.5 sm:flex-none"
                             onClick={() => setPreviewMode(!previewMode)}>
                             <Eye className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline text-xs">Xem trước</span>
                         </Button>
 
                         {/* Print */}
-                        <Button onClick={() => window.print()} size="sm" className="gap-1.5">
+                        <Button onClick={() => window.print()} size="sm" className="flex-1 gap-1.5 sm:flex-none">
                             <Printer className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline text-xs">In sách</span>
                         </Button>
@@ -303,7 +303,7 @@ export default function BookPage() {
 
                 {/* Preview quick-nav strip */}
                 {previewMode && (
-                    <div className="border-t bg-slate-50 px-4 py-2 overflow-hidden">
+                    <div className="overflow-hidden border-t bg-slate-50 px-3 py-2 sm:px-4">
                         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin" style={{ maxWidth: '100%' }}>
                             {sections.map(s => (
                                 <a key={s.id} href={`#preview-${s.id}`}
@@ -321,8 +321,8 @@ export default function BookPage() {
 
             {/* ═══ PRINT PREVIEW GALLERY ═══ */}
             {previewMode && (
-                <div className="no-print bg-slate-100 min-h-screen p-6">
-                    <div ref={pagesRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                <div className="no-print min-h-screen bg-slate-100 p-3 sm:p-6">
+                    <div ref={pagesRef} className="mx-auto grid max-w-7xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
                         {sections.map(s => (
                             <div key={s.id} id={`preview-${s.id}`} className="relative">
                                 <div className="preview-card-inner bg-white rounded-lg shadow-md border overflow-hidden hover:shadow-xl transition-shadow">
@@ -352,29 +352,29 @@ export default function BookPage() {
 
             {/* ═══ NORMAL READING MODE ═══ */}
             {!previewMode && (
-                <div className="book-content max-w-[210mm] mx-auto bg-white"
+                <div className="book-content mx-auto w-full max-w-[210mm] bg-white"
                     style={{ fontFamily: "'Noto Serif', Georgia, serif", color: t.text }}>
 
                     <CoverPage bookData={bookData} theme={t} />
 
-                    <section id="toc" className="page-break px-8 py-12">
+                    <section id="toc" className="page-break px-4 py-10 sm:px-8 sm:py-12">
                         <span className="page-label">Trang 2</span>
                         <TocContent bookData={bookData} theme={t} />
                     </section>
 
                     {bookData.chapters.map((ch, ci) => (
-                        <section key={ch.generation} id={`gen-${ch.generation}`} className="page-break px-8 py-12">
+                        <section key={ch.generation} id={`gen-${ch.generation}`} className="page-break px-4 py-10 sm:px-8 sm:py-12">
                             <span className="page-label">Trang {ci + 3}</span>
                             <ChapterContent chapter={ch} theme={t} />
                         </section>
                     ))}
 
-                    <section id="appendix" className="page-break px-8 py-12">
+                    <section id="appendix" className="page-break px-4 py-10 sm:px-8 sm:py-12">
                         <span className="page-label">Trang {bookData.chapters.length + 3}</span>
                         <AppendixContent bookData={bookData} theme={t} />
                     </section>
 
-                    <section id="closing" className="page-break px-8 py-16 text-center" style={{ fontFamily: "'Noto Serif', Georgia, serif" }}>
+                    <section id="closing" className="page-break px-4 py-12 text-center sm:px-8 sm:py-16" style={{ fontFamily: "'Noto Serif', Georgia, serif" }}>
                         <span className="page-label">Trang {bookData.chapters.length + 4}</span>
                         <ClosingContent bookData={bookData} theme={t} />
                     </section>
@@ -452,13 +452,13 @@ function BookSection({ sectionId, bookData, theme: t, memberStart, memberEnd, is
 
 function CoverPage({ bookData, theme: t }: { bookData: BookData; theme: Theme }) {
     return (
-        <section className="cover-page flex flex-col items-center justify-center text-center px-8 py-16 min-h-[280mm]">
+        <section className="cover-page flex min-h-[280mm] flex-col items-center justify-center px-4 py-16 text-center sm:px-8">
             <div className="flex-1 flex flex-col items-center justify-center">
                 <div className="w-24 h-0.5 mb-8" style={{ background: t.primary }} />
-                <h1 className="text-4xl font-bold tracking-wider font-serif mb-2" style={{ color: t.primary }}>
+                <h1 className="mb-2 font-serif text-3xl font-bold tracking-wider sm:text-4xl" style={{ color: t.primary }}>
                     GIA PHẢ
                 </h1>
-                <h2 className="text-5xl font-bold tracking-widest font-serif mb-8" style={{ color: t.secondary }}>
+                <h2 className="mb-8 font-serif text-4xl font-bold tracking-widest sm:text-5xl" style={{ color: t.secondary }}>
                     DÒNG HỌ {bookData.familyName.toUpperCase()}
                 </h2>
                 <div className="w-32 h-0.5 mb-10" style={{ background: t.primary }} />
@@ -532,7 +532,7 @@ function ChapterContent({ chapter, theme: t, members, startIndex, showHeader }: 
                     {chapter.title} (tiếp theo)
                 </p>
             )}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {displayMembers.map((person, idx) => (
                     <PersonEntry key={person.handle} person={person} index={offset + idx + 1} theme={t} />
                 ))}
@@ -619,8 +619,8 @@ function AppendixContent({ bookData, theme: t, startIdx, endIdx, showHeader }: {
     // Determine section boundaries
     const patriEnd = patrilineal.length;
     const showPatriHeader = start < patriEnd;
-    const showNgoaiHeader = end > patriEnd && start < allEntries.length;
-
+    const pagePatriEntries = pageEntries.filter((_, idx) => (start + idx) < patriEnd);
+    const pageNgoaiEntries = pageEntries.filter((_, idx) => (start + idx) >= patriEnd);
     return (
         <>
             {showHeader !== false && (
@@ -638,41 +638,54 @@ function AppendixContent({ bookData, theme: t, startIdx, endIdx, showHeader }: {
                 </p>
             )}
 
-            {/* Render entries with section headers inline */}
+            {/* Nội tộc section */}
             {showPatriHeader && start === 0 && (
                 <h3 className="text-base font-bold font-serif mb-3 tracking-wide pb-2"
                     style={{ color: t.primary, borderBottom: `1px solid ${t.border}` }}>
                     NỘI TỘC — Dòng họ {bookData.familyName} ({patrilineal.length} người)
                 </h3>
             )}
-
-            <div className="columns-3 gap-4 text-[11px] font-serif">
-                {pageEntries.map((entry, i) => {
-                    const globalIdx = start + i;
-                    const isNgoaiStart = globalIdx === patriEnd;
-                    return (
-                        <div key={`e-${globalIdx}`}>
-                            {isNgoaiStart && (
-                                <h3 className="text-base font-bold font-serif mb-3 mt-6 tracking-wide pb-2 text-stone-600 border-b border-stone-300 break-before-column">
-                                    NGOẠI TỘC — Thân thuộc ({ngoaitoc.length} người)
-                                </h3>
-                            )}
-                            <div className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
-                                <span className={globalIdx < patriEnd ? 'font-semibold' : 'text-stone-600'}
-                                    style={globalIdx < patriEnd ? { color: t.primary } : undefined}>
+            {pagePatriEntries.length > 0 && (
+                <div className="space-y-1 text-[11px] font-serif">
+                    {pagePatriEntries.map((entry, i) => {
+                        const globalIdx = start + i;
+                        return (
+                            <div key={`patri-${globalIdx}`} className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
+                                <span className="font-semibold" style={{ color: t.primary }}>
                                     {entry.name}
                                 </span>
-                                <span className="flex-1 border-b border-dotted mx-1"
-                                    style={{ borderColor: globalIdx < patriEnd ? t.borderLight : '#d6d3d1' }} />
-                                <span className="text-xs"
-                                    style={{ color: globalIdx < patriEnd ? t.textMuted : '#a8a29e' }}>
+                                <span className="flex-1 border-b border-dotted mx-1" style={{ borderColor: t.borderLight }} />
+                                <span className="text-xs" style={{ color: t.textMuted }}>
                                     Đời {entry.generation + 1}
                                 </span>
                             </div>
-                        </div>
-                    );
-                })}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Ngoại tộc section: always rendered below Nội tộc */}
+            {pageNgoaiEntries.length > 0 && (
+                <>
+                    <h3 className="text-base font-bold font-serif mb-3 mt-6 tracking-wide pb-2 text-stone-600 border-b border-stone-300">
+                        NGOẠI TỘC — Thân thuộc ({ngoaitoc.length} người)
+                    </h3>
+                    <div className="space-y-1 text-[11px] font-serif">
+                        {pageNgoaiEntries.map((entry, i) => {
+                            const globalIdx = start + pagePatriEntries.length + i;
+                            return (
+                                <div key={`ngoai-${globalIdx}`} className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
+                                    <span className="text-stone-600">{entry.name}</span>
+                                    <span className="flex-1 border-b border-dotted mx-1" style={{ borderColor: '#d6d3d1' }} />
+                                    <span className="text-xs" style={{ color: '#a8a29e' }}>
+                                        Đời {entry.generation + 1}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
         </>
     );
 }

@@ -98,24 +98,24 @@ export default function PeopleListPage() {
                     <p className="text-muted-foreground">{people.length} người trong gia phả</p>
                 </div>
                 {isLoggedIn && (
-                    <Button onClick={openCreateModal} className="gap-2">
+                    <Button onClick={openCreateModal} className="w-full sm:w-auto gap-2">
                         <Plus className="h-4 w-4" />
                         Tạo thành viên
                     </Button>
                 )}
             </div>
 
-            <div className="flex flex-wrap gap-3 items-center">
-                <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <div className="flex flex-wrap gap-3 items-start">
+                <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Tìm theo tên..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 overflow-x-auto pb-1">
                     <Button variant={genderFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setGenderFilter(null)}>Tất cả</Button>
                     <Button variant={genderFilter === 1 ? 'default' : 'outline'} size="sm" onClick={() => setGenderFilter(1)}>Nam</Button>
                     <Button variant={genderFilter === 2 ? 'default' : 'outline'} size="sm" onClick={() => setGenderFilter(2)}>Nữ</Button>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 overflow-x-auto pb-1">
                     <Button variant={livingFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(null)}>Tất cả</Button>
                     <Button variant={livingFilter === true ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(true)}>Còn sống</Button>
                     <Button variant={livingFilter === false ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(false)}>Đã mất</Button>
@@ -129,41 +129,40 @@ export default function PeopleListPage() {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                         </div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Họ tên</TableHead>
-                                    <TableHead>Giới tính</TableHead>
-                                    <TableHead>Năm sinh</TableHead>
-                                    <TableHead>Năm mất</TableHead>
-                                    <TableHead>Trạng thái</TableHead>
-                                    <TableHead className="text-right">Thao tác</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                        <>
+                            <div className="space-y-3 p-3 md:hidden">
                                 {filtered.map((p) => (
-                                    <TableRow
+                                    <div
                                         key={p.handle}
-                                        className="cursor-pointer hover:bg-accent/50"
+                                        role="button"
+                                        tabIndex={0}
+                                        className="w-full rounded-lg border p-3 text-left transition hover:bg-accent/40"
                                         onClick={() => router.push(`/people/${p.handle}`)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                router.push(`/people/${p.handle}`);
+                                            }
+                                        }}
                                     >
-                                        <TableCell className="font-medium">
-                                            {p.displayName}
-                                            {p.isPrivacyFiltered && <span className="ml-1 text-amber-500">🔒</span>}
-                                        </TableCell>
-                                        <TableCell>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="font-medium leading-tight">
+                                                    {p.displayName}
+                                                    {p.isPrivacyFiltered && <span className="ml-1 text-amber-500">🔒</span>}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Sinh: {p.birthYear || '—'} · Mất: {p.deathYear || (p.isLiving ? '—' : 'Chưa rõ')}
+                                                </p>
+                                            </div>
                                             <Badge variant="outline">
                                                 {p.gender === 1 ? 'Nam' : p.gender === 2 ? 'Nữ' : '?'}
                                             </Badge>
-                                        </TableCell>
-                                        <TableCell>{p.birthYear || '—'}</TableCell>
-                                        <TableCell>{p.deathYear || (p.isLiving ? '—' : '?')}</TableCell>
-                                        <TableCell>
+                                        </div>
+                                        <div className="mt-3 flex items-center justify-between gap-2">
                                             <Badge variant={p.isLiving ? 'default' : 'secondary'}>
                                                 {p.isLiving ? 'Còn sống' : 'Đã mất'}
                                             </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
                                             {isLoggedIn && (
                                                 <Button
                                                     variant="outline"
@@ -175,26 +174,92 @@ export default function PeopleListPage() {
                                                     Sửa
                                                 </Button>
                                             )}
-                                        </TableCell>
-                                    </TableRow>
+                                        </div>
+                                    </div>
                                 ))}
                                 {filtered.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                                            <div className="flex flex-col items-center gap-3">
-                                                <span>{search ? 'Không tìm thấy kết quả' : 'Chưa có dữ liệu gia phả'}</span>
-                                                {!search && isLoggedIn && (
-                                                    <Button onClick={openCreateModal} className="gap-2">
-                                                        <Plus className="h-4 w-4" />
-                                                        Tạo thành viên đầu tiên
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
+                                    <div className="rounded-lg border px-4 py-8 text-center text-muted-foreground">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <span>{search ? 'Không tìm thấy kết quả' : 'Chưa có dữ liệu gia phả'}</span>
+                                            {!search && isLoggedIn && (
+                                                <Button onClick={openCreateModal} className="gap-2">
+                                                    <Plus className="h-4 w-4" />
+                                                    Tạo thành viên đầu tiên
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
-                            </TableBody>
-                        </Table>
+                            </div>
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Họ tên</TableHead>
+                                            <TableHead>Giới tính</TableHead>
+                                            <TableHead>Năm sinh</TableHead>
+                                            <TableHead>Năm mất</TableHead>
+                                            <TableHead>Trạng thái</TableHead>
+                                            <TableHead className="text-right">Thao tác</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filtered.map((p) => (
+                                            <TableRow
+                                                key={p.handle}
+                                                className="cursor-pointer hover:bg-accent/50"
+                                                onClick={() => router.push(`/people/${p.handle}`)}
+                                            >
+                                                <TableCell className="font-medium">
+                                                    {p.displayName}
+                                                    {p.isPrivacyFiltered && <span className="ml-1 text-amber-500">🔒</span>}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline">
+                                                        {p.gender === 1 ? 'Nam' : p.gender === 2 ? 'Nữ' : '?'}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>{p.birthYear || '—'}</TableCell>
+                                                <TableCell>{p.deathYear || (p.isLiving ? '—' : 'Chưa rõ')}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={p.isLiving ? 'default' : 'secondary'}>
+                                                        {p.isLiving ? 'Còn sống' : 'Đã mất'}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    {isLoggedIn && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="gap-2"
+                                                            onClick={(e) => { e.stopPropagation(); openEditModal(p.handle); }}
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                            Sửa
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {filtered.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                                    <div className="flex flex-col items-center gap-3">
+                                                        <span>{search ? 'Không tìm thấy kết quả' : 'Chưa có dữ liệu gia phả'}</span>
+                                                        {!search && isLoggedIn && (
+                                                            <Button onClick={openCreateModal} className="gap-2">
+                                                                <Plus className="h-4 w-4" />
+                                                                Tạo thành viên đầu tiên
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </>
                     )}
                 </CardContent>
             </Card>

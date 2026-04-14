@@ -79,6 +79,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
     const [form, setForm] = useState({
         name: '',
         gender: 1 as 1 | 2,
+        isLiving: true,
         phone: '',
         birthDate: '',
         birthYear: '',
@@ -91,6 +92,8 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
         spouseHandles: [] as string[],
         childrenHandles: [] as string[],
     });
+
+    const formatBirthYearLabel = (birthYear?: number) => `Sinh ${birthYear ?? '—'}`;
 
     function createFamilyHandle(): string {
         return `F${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1_000_000).toString(36).toUpperCase()}`;
@@ -156,6 +159,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
         setForm({
             name: '',
             gender: 1,
+            isLiving: true,
             phone: '',
             birthDate: '',
             birthYear: '',
@@ -208,6 +212,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
             setForm({
                 name: person.displayName ?? '',
                 gender: (person.gender === 2 ? 2 : 1),
+                isLiving: person.isLiving ?? true,
                 phone: person.phone ?? '',
                 birthDate: '',
                 birthYear: person.birthYear ? String(person.birthYear) : '',
@@ -313,6 +318,10 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 setCreateError('Năm mất không hợp lệ.');
                 return;
             }
+            if (form.isLiving && (deathYear !== null || !!deathDate)) {
+                setCreateError('Người còn sống không được có Ngày mất hoặc Năm mất. Hãy xóa thông tin mất hoặc chuyển trạng thái sang "Đã mất".');
+                return;
+            }
     
             const spouseHandles = [...new Set(form.spouseHandles.filter(Boolean))];
             const childrenHandles = [...new Set(form.childrenHandles.filter(Boolean))];
@@ -329,7 +338,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 const personHandle = resolvedEditHandle ?? `P${Date.now().toString(36).toUpperCase()}`;
                 const isCreateMode = !resolvedEditHandle;
                 const isEditMode = !!resolvedEditHandle;
-                const isLiving = deathYear ? false : true;
+                const isLiving = form.isLiving;
 
                 const handleRelationshipError = (message: string): boolean => {
                     if (isEditMode) {
@@ -375,8 +384,12 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                             display_name: name,
                             gender: form.gender,
                             phone,
+                            birth_date: birthDate,
                             birth_year: birthYear,
+                            birth_place: birthPlace,
+                            death_date: deathDate,
                             death_year: deathYear,
+                            death_place: deathPlace,
                             is_living: isLiving,
                             is_privacy_filtered: false,
                             is_patrilineal: form.gender === 1,
@@ -655,6 +668,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 setForm({
                     name: '',
                     gender: 1,
+                    isLiving: true,
                     phone: '',
                     birthDate: '',
                     birthYear: '',
@@ -733,15 +747,15 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 }
             }}
         >
-                    <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
-                        <DialogHeader className="shrink-0 border-b px-6 py-4">
+                    <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-2xl">
+                        <DialogHeader className="shrink-0 border-b px-4 py-3 sm:px-6 sm:py-4">
                             <DialogTitle>{(targetEditHandle ?? internalEditHandle) ? 'Sửa thành viên' : 'Tạo thành viên'}</DialogTitle>
                         </DialogHeader>
 
-                        <div className="grid gap-3 overflow-y-auto px-6 py-4">
+                        <div className="grid gap-3 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
                             <div className="grid gap-1.5">
                                 <label className="text-sm font-medium">Họ tên</label>
-                                <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Nguyễn Văn A" />
+                                <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Đỗ Văn A" />
                             </div>
     
                             <div className="grid gap-1.5">
@@ -759,6 +773,34 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                             </div>
 
                             <div className="grid gap-1.5">
+                                <label className="text-sm font-medium">Trạng thái</label>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant={form.isLiving ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => {
+                                            setCreateError(null);
+                                            setForm(f => ({ ...f, isLiving: true }));
+                                        }}
+                                    >
+                                        Còn sống
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={!form.isLiving ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => {
+                                            setCreateError(null);
+                                            setForm(f => ({ ...f, isLiving: false }));
+                                        }}
+                                    >
+                                        Đã mất
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-1.5">
                                 <label className="text-sm font-medium">Số điện thoại</label>
                                 <Input
                                     value={form.phone}
@@ -767,79 +809,66 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                 />
                             </div>
     
-                            {(targetEditHandle ?? internalEditHandle) ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="grid gap-1.5">
-                                        <label className="text-sm font-medium">Ngày sinh</label>
-                                        <Input
-                                            value={form.birthDate}
-                                            inputMode="numeric"
-                                            maxLength={5}
-                                            onChange={(e) => {
-                                                setForm(f => ({ ...f, birthDate: e.target.value }));
-                                                setDateErrors((prev) => ({ ...prev, birthDate: undefined }));
-                                            }}
-                                            onBlur={() => {
-                                                const normalized = normalizeDayMonthInput(form.birthDate);
-                                                if (normalized.error) {
-                                                    setDateErrors((prev) => ({ ...prev, birthDate: normalized.error ?? undefined }));
-                                                    return;
-                                                }
-                                                setDateErrors((prev) => ({ ...prev, birthDate: undefined }));
-                                                setForm(f => ({ ...f, birthDate: normalized.value ?? '' }));
-                                            }}
-                                            placeholder="DD/MM"
-                                        />
-                                        {dateErrors.birthDate && (
-                                            <p className="text-xs text-red-600">{dateErrors.birthDate}</p>
-                                        )}
-                                        <label className="text-sm font-medium">Năm sinh</label>
-                                        <Input inputMode="numeric" value={form.birthYear} onChange={(e) => setForm(f => ({ ...f, birthYear: e.target.value }))} placeholder="1990" />
-                                        <label className="text-sm font-medium">Nơi sinh</label>
-                                        <Input value={form.birthPlace} onChange={(e) => setForm(f => ({ ...f, birthPlace: e.target.value }))} placeholder="—" />
-                                    </div>
-                                    <div className="grid gap-1.5">
-                                        <label className="text-sm font-medium">Ngày mất</label>
-                                        <Input
-                                            value={form.deathDate}
-                                            inputMode="numeric"
-                                            maxLength={5}
-                                            onChange={(e) => {
-                                                setForm(f => ({ ...f, deathDate: e.target.value }));
-                                                setDateErrors((prev) => ({ ...prev, deathDate: undefined }));
-                                            }}
-                                            onBlur={() => {
-                                                const normalized = normalizeDayMonthInput(form.deathDate);
-                                                if (normalized.error) {
-                                                    setDateErrors((prev) => ({ ...prev, deathDate: normalized.error ?? undefined }));
-                                                    return;
-                                                }
-                                                setDateErrors((prev) => ({ ...prev, deathDate: undefined }));
-                                                setForm(f => ({ ...f, deathDate: normalized.value ?? '' }));
-                                            }}
-                                            placeholder="DD/MM"
-                                        />
-                                        {dateErrors.deathDate && (
-                                            <p className="text-xs text-red-600">{dateErrors.deathDate}</p>
-                                        )}
-                                        <label className="text-sm font-medium">Năm mất</label>
-                                        <Input inputMode="numeric" value={form.deathYear} onChange={(e) => setForm(f => ({ ...f, deathYear: e.target.value }))} placeholder="—" />
-                                        <label className="text-sm font-medium">Nơi mất</label>
-                                        <Input value={form.deathPlace} onChange={(e) => setForm(f => ({ ...f, deathPlace: e.target.value }))} placeholder="—" />
-                                    </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="grid gap-1.5">
+                                    <label className="text-sm font-medium">Ngày sinh</label>
+                                    <Input
+                                        value={form.birthDate}
+                                        inputMode="numeric"
+                                        maxLength={5}
+                                        onChange={(e) => {
+                                            setForm(f => ({ ...f, birthDate: e.target.value }));
+                                            setDateErrors((prev) => ({ ...prev, birthDate: undefined }));
+                                        }}
+                                        onBlur={() => {
+                                            const normalized = normalizeDayMonthInput(form.birthDate);
+                                            if (normalized.error) {
+                                                setDateErrors((prev) => ({ ...prev, birthDate: normalized.error ?? undefined }));
+                                                return;
+                                            }
+                                            setDateErrors((prev) => ({ ...prev, birthDate: undefined }));
+                                            setForm(f => ({ ...f, birthDate: normalized.value ?? '' }));
+                                        }}
+                                        placeholder="DD/MM"
+                                    />
+                                    {dateErrors.birthDate && (
+                                        <p className="text-xs text-red-600">{dateErrors.birthDate}</p>
+                                    )}
+                                    <label className="text-sm font-medium">Năm sinh</label>
+                                    <Input inputMode="numeric" value={form.birthYear} onChange={(e) => setForm(f => ({ ...f, birthYear: e.target.value }))} placeholder="1990" />
+                                    <label className="text-sm font-medium">Nơi sinh</label>
+                                    <Input value={form.birthPlace} onChange={(e) => setForm(f => ({ ...f, birthPlace: e.target.value }))} placeholder="—" />
                                 </div>
-                            ) : (
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="grid gap-1.5">
-                                        <label className="text-sm font-medium">Năm sinh</label>
-                                        <Input inputMode="numeric" value={form.birthYear} onChange={(e) => setForm(f => ({ ...f, birthYear: e.target.value }))} placeholder="1990" />
-                                    </div>
-                                    <div className="grid gap-1.5">
-                                        <label className="text-sm font-medium">Năm mất</label>
-                                        <Input inputMode="numeric" value={form.deathYear} onChange={(e) => setForm(f => ({ ...f, deathYear: e.target.value }))} placeholder="—" />
-                                    </div>
+                                <div className="grid gap-1.5">
+                                    <label className="text-sm font-medium">Ngày mất</label>
+                                    <Input
+                                        value={form.deathDate}
+                                        inputMode="numeric"
+                                        maxLength={5}
+                                        onChange={(e) => {
+                                            setForm(f => ({ ...f, deathDate: e.target.value }));
+                                            setDateErrors((prev) => ({ ...prev, deathDate: undefined }));
+                                        }}
+                                        onBlur={() => {
+                                            const normalized = normalizeDayMonthInput(form.deathDate);
+                                            if (normalized.error) {
+                                                setDateErrors((prev) => ({ ...prev, deathDate: normalized.error ?? undefined }));
+                                                return;
+                                            }
+                                            setDateErrors((prev) => ({ ...prev, deathDate: undefined }));
+                                            setForm(f => ({ ...f, deathDate: normalized.value ?? '' }));
+                                        }}
+                                        placeholder="DD/MM"
+                                    />
+                                    {dateErrors.deathDate && (
+                                        <p className="text-xs text-red-600">{dateErrors.deathDate}</p>
+                                    )}
+                                    <label className="text-sm font-medium">Năm mất</label>
+                                    <Input inputMode="numeric" value={form.deathYear} onChange={(e) => setForm(f => ({ ...f, deathYear: e.target.value }))} placeholder="—" />
+                                    <label className="text-sm font-medium">Nơi mất</label>
+                                    <Input value={form.deathPlace} onChange={(e) => setForm(f => ({ ...f, deathPlace: e.target.value }))} placeholder="—" />
                                 </div>
-                            )}
+                            </div>
     
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="grid gap-1.5">
@@ -854,13 +883,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                 </span>
                                             </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[320px] max-w-[calc(100vw-3rem)]">
+                                        <DropdownMenuContent className="w-[min(320px,calc(100vw-2rem))]">
                                             <DropdownMenuLabel>Bố</DropdownMenuLabel>
                                             <div className="px-2 pb-2">
                                                 <Input
                                                     value={fatherQuery}
                                                     onChange={(e) => setFatherQuery(e.target.value)}
-                                                    placeholder="Tìm theo tên hoặc handle..."
+                                                    placeholder="Tìm theo tên"
                                                     className="h-8"
                                                 />
                                             </div>
@@ -882,7 +911,9 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                     .map(p => (
                                                         <DropdownMenuRadioItem key={p.handle} value={p.handle}>
                                                             <span className="truncate">{p.displayName}</span>
-                                                            <span className="text-xs text-muted-foreground ml-1">{p.handle}</span>
+                                                            <span className="text-xs text-muted-foreground ml-1">
+                                                                {formatBirthYearLabel(p.birthYear)}
+                                                            </span>
                                                         </DropdownMenuRadioItem>
                                                     ))}
                                             </DropdownMenuRadioGroup>
@@ -901,13 +932,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                 </span>
                                             </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[320px] max-w-[calc(100vw-3rem)]">
+                                        <DropdownMenuContent className="w-[min(320px,calc(100vw-2rem))]">
                                             <DropdownMenuLabel>Mẹ</DropdownMenuLabel>
                                             <div className="px-2 pb-2">
                                                 <Input
                                                     value={motherQuery}
                                                     onChange={(e) => setMotherQuery(e.target.value)}
-                                                    placeholder="Tìm theo tên hoặc handle..."
+                                                    placeholder="Tìm theo tên"
                                                     className="h-8"
                                                 />
                                             </div>
@@ -929,7 +960,9 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                     .map(p => (
                                                         <DropdownMenuRadioItem key={p.handle} value={p.handle}>
                                                             <span className="truncate">{p.displayName}</span>
-                                                            <span className="text-xs text-muted-foreground ml-1">{p.handle}</span>
+                                                            <span className="text-xs text-muted-foreground ml-1">
+                                                                {formatBirthYearLabel(p.birthYear)}
+                                                            </span>
                                                         </DropdownMenuRadioItem>
                                                     ))}
                                             </DropdownMenuRadioGroup>
@@ -977,13 +1010,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                 Chọn hoặc bỏ chọn trong danh sách
                                             </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[420px] max-w-[calc(100vw-3rem)]">
+                                        <DropdownMenuContent className="w-[min(420px,calc(100vw-2rem))]">
                                             <DropdownMenuLabel>Hôn nhân</DropdownMenuLabel>
                                             <div className="px-2 pb-2">
                                                 <Input
                                                     value={spouseQuery}
                                                     onChange={(e) => setSpouseQuery(e.target.value)}
-                                                    placeholder="Tìm theo tên hoặc handle..."
+                                                    placeholder="Tìm theo tên"
                                                     className="h-8"
                                                 />
                                             </div>
@@ -1009,7 +1042,9 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                         }}
                                                     >
                                                         <span className="truncate flex-1">{p.displayName}</span>
-                                                        <span className="text-xs text-muted-foreground">{p.handle}</span>
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {formatBirthYearLabel(p.birthYear)}
+                                                        </span>
                                                     </DropdownMenuCheckboxItem>
                                                 ))}
                                             {people.length === 0 && (
@@ -1059,13 +1094,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                 Chọn hoặc bỏ chọn trong danh sách
                                             </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[420px] max-w-[calc(100vw-3rem)]">
+                                        <DropdownMenuContent className="w-[min(420px,calc(100vw-2rem))]">
                                             <DropdownMenuLabel>Con cái</DropdownMenuLabel>
                                             <div className="px-2 pb-2">
                                                 <Input
                                                     value={childQuery}
                                                     onChange={(e) => setChildQuery(e.target.value)}
-                                                    placeholder="Tìm theo tên hoặc handle..."
+                                                    placeholder="Tìm theo tên"
                                                     className="h-8"
                                                 />
                                             </div>
@@ -1091,7 +1126,9 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                                         }}
                                                     >
                                                         <span className="truncate flex-1">{p.displayName}</span>
-                                                        <span className="text-xs text-muted-foreground">{p.handle}</span>
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {formatBirthYearLabel(p.birthYear)}
+                                                        </span>
                                                     </DropdownMenuCheckboxItem>
                                                 ))}
                                             {people.length === 0 && (
@@ -1102,12 +1139,14 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                 </div>
                             </div>
     
-                            {createError && (
-                                <div className="text-sm text-red-600">{createError}</div>
-                            )}
                         </div>
     
-                        <DialogFooter className="shrink-0 border-t px-6 py-4">
+                        <DialogFooter className="shrink-0 border-t px-4 py-3 sm:px-6 sm:py-4">
+                            {createError && (
+                                <div className="w-full text-sm text-red-600 sm:mr-auto sm:max-w-[70%]">
+                                    {createError}
+                                </div>
+                            )}
                             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={createSaving}>
                                 Hủy
                             </Button>

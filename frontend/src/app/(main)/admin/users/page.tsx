@@ -202,7 +202,7 @@ export default function AdminUsersPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <Shield className="h-6 w-6" />
@@ -210,13 +210,13 @@ export default function AdminUsersPage() {
                     </h1>
                     <p className="text-muted-foreground">Quản lý tài khoản và quyền truy cập</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex w-full sm:w-auto gap-2">
                     <Button variant="outline" size="icon" onClick={() => { fetchUsers(); fetchInvites(); }}>
                         <RefreshCw className="h-4 w-4" />
                     </Button>
                     <Dialog open={inviteDialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog(); else setInviteDialogOpen(true); }}>
                         <DialogTrigger asChild>
-                            <Button>
+                            <Button className="flex-1 sm:flex-none">
                                 <Plus className="mr-2 h-4 w-4" />
                                 Tạo link mời
                             </Button>
@@ -271,34 +271,18 @@ export default function AdminUsersPage() {
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                         </div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Tên</TableHead>
-                                    <TableHead>Email</TableHead>
-                                    <TableHead>Quyền</TableHead>
-                                    <TableHead>Trạng thái</TableHead>
-                                    <TableHead>Ngày tham gia</TableHead>
-                                    <TableHead className="w-12"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                        <>
+                            <div className="space-y-3 md:hidden">
                                 {users.map((user) => (
-                                    <TableRow key={user.id}>
-                                        <TableCell className="font-medium">{user.display_name || user.email.split('@')[0]}</TableCell>
-                                        <TableCell>{user.email}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="secondary" className={ROLE_COLORS[user.role] || ''}>
-                                                {user.role.toUpperCase()}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={user.status === 'active' ? 'default' : 'destructive'}>
-                                                {user.status === 'active' ? 'Hoạt động' : 'Tạm ngưng'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>{new Date(user.created_at).toLocaleDateString('vi-VN')}</TableCell>
-                                        <TableCell>
+                                    <div key={user.id} className="rounded-lg border p-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="font-medium">{user.display_name || user.email.split('@')[0]}</p>
+                                                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Tham gia: {new Date(user.created_at).toLocaleDateString('vi-VN')}
+                                                </p>
+                                            </div>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon">
@@ -324,11 +308,79 @@ export default function AdminUsersPage() {
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
-                                        </TableCell>
-                                    </TableRow>
+                                        </div>
+                                        <div className="mt-3 flex items-center gap-2">
+                                            <Badge variant="secondary" className={ROLE_COLORS[user.role] || ''}>
+                                                {user.role.toUpperCase()}
+                                            </Badge>
+                                            <Badge variant={user.status === 'active' ? 'default' : 'destructive'}>
+                                                {user.status === 'active' ? 'Hoạt động' : 'Tạm ngưng'}
+                                            </Badge>
+                                        </div>
+                                    </div>
                                 ))}
-                            </TableBody>
-                        </Table>
+                            </div>
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Tên</TableHead>
+                                            <TableHead>Email</TableHead>
+                                            <TableHead>Quyền</TableHead>
+                                            <TableHead>Trạng thái</TableHead>
+                                            <TableHead>Ngày tham gia</TableHead>
+                                            <TableHead className="w-12"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {users.map((user) => (
+                                            <TableRow key={user.id}>
+                                                <TableCell className="font-medium">{user.display_name || user.email.split('@')[0]}</TableCell>
+                                                <TableCell>{user.email}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant="secondary" className={ROLE_COLORS[user.role] || ''}>
+                                                        {user.role.toUpperCase()}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant={user.status === 'active' ? 'default' : 'destructive'}>
+                                                        {user.status === 'active' ? 'Hoạt động' : 'Tạm ngưng'}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>{new Date(user.created_at).toLocaleDateString('vi-VN')}</TableCell>
+                                                <TableCell>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" size="icon">
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'admin')}>
+                                                                Đặt Admin
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'editor')}>
+                                                                Đặt Editor
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'member')}>
+                                                                Đặt Member
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                className={user.status === 'active' ? 'text-destructive' : 'text-green-600'}
+                                                                onClick={() => handleToggleStatus(user.id, user.status)}
+                                                            >
+                                                                {user.status === 'active' ? 'Tạm ngưng' : 'Kích hoạt lại'}
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </>
                     )}
                 </CardContent>
             </Card>
@@ -346,58 +398,101 @@ export default function AdminUsersPage() {
                     {invites.length === 0 ? (
                         <p className="text-center text-muted-foreground py-6">Chưa có link mời nào</p>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Link</TableHead>
-                                    <TableHead>Quyền</TableHead>
-                                    <TableHead>Đã dùng / Tối đa</TableHead>
-                                    <TableHead>Ngày tạo</TableHead>
-                                    <TableHead className="w-20"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                        <>
+                            <div className="space-y-3 md:hidden">
                                 {invites.map(inv => (
-                                    <TableRow key={inv.id}>
-                                        <TableCell>
-                                            <code className="text-xs bg-muted px-2 py-1 rounded">
-                                                ...?code={inv.code.slice(0, 8)}...
-                                            </code>
-                                        </TableCell>
-                                        <TableCell>
+                                    <div key={inv.id} className="rounded-lg border p-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <code className="text-xs bg-muted px-2 py-1 rounded">
+                                                    ...?code={inv.code.slice(0, 8)}...
+                                                </code>
+                                                <p className="mt-2 text-xs text-muted-foreground">
+                                                    {new Date(inv.created_at).toLocaleDateString('vi-VN')}
+                                                </p>
+                                            </div>
                                             <Badge variant="secondary" className={ROLE_COLORS[inv.role] || ''}>
                                                 {inv.role.toUpperCase()}
                                             </Badge>
-                                        </TableCell>
-                                        <TableCell>{inv.used_count} / {inv.max_uses}</TableCell>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {new Date(inv.created_at).toLocaleDateString('vi-VN')}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex gap-1">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => handleCopy(getInviteUrl(inv.code))}
-                                                    title="Sao chép link"
-                                                >
-                                                    {copied === getInviteUrl(inv.code) ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => handleDeleteInvite(inv.id)}
-                                                    title="Xóa link"
-                                                    className="text-destructive hover:text-destructive"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
+                                        </div>
+                                        <p className="mt-2 text-sm">{inv.used_count} / {inv.max_uses} lượt dùng</p>
+                                        <div className="mt-3 flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex-1"
+                                                onClick={() => handleCopy(getInviteUrl(inv.code))}
+                                            >
+                                                {copied === getInviteUrl(inv.code) ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                                                <span className="ml-2">Sao chép</span>
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-destructive hover:text-destructive"
+                                                onClick={() => handleDeleteInvite(inv.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
                                 ))}
-                            </TableBody>
-                        </Table>
+                            </div>
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Link</TableHead>
+                                            <TableHead>Quyền</TableHead>
+                                            <TableHead>Đã dùng / Tối đa</TableHead>
+                                            <TableHead>Ngày tạo</TableHead>
+                                            <TableHead className="w-20"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {invites.map(inv => (
+                                            <TableRow key={inv.id}>
+                                                <TableCell>
+                                                    <code className="text-xs bg-muted px-2 py-1 rounded">
+                                                        ...?code={inv.code.slice(0, 8)}...
+                                                    </code>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="secondary" className={ROLE_COLORS[inv.role] || ''}>
+                                                        {inv.role.toUpperCase()}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>{inv.used_count} / {inv.max_uses}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">
+                                                    {new Date(inv.created_at).toLocaleDateString('vi-VN')}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex gap-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleCopy(getInviteUrl(inv.code))}
+                                                            title="Sao chép link"
+                                                        >
+                                                            {copied === getInviteUrl(inv.code) ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleDeleteInvite(inv.id)}
+                                                            title="Xóa link"
+                                                            className="text-destructive hover:text-destructive"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </>
                     )}
                 </CardContent>
             </Card>

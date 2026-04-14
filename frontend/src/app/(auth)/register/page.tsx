@@ -99,7 +99,7 @@ function RegisterContent() {
             }
 
             router.push('/');
-        } catch (err: unknown) {
+        } catch {
             setError('Đăng ký thất bại. Vui lòng thử lại.');
         } finally {
             setLoading(false);
@@ -107,17 +107,17 @@ function RegisterContent() {
     };
 
     return (
-        <Card className="border-0 shadow-2xl">
+        <Card className="border-0 shadow-xl sm:shadow-2xl">
             <CardHeader className="text-center space-y-2">
                 <div className="flex justify-center">
                     <div className="rounded-full bg-primary/10 p-3">
                         <TreePine className="h-8 w-8 text-primary" />
                     </div>
                 </div>
-                <CardTitle className="text-2xl font-bold">Tham gia Gia phả họ Đỗ Văn</CardTitle>
+                <CardTitle className="text-xl font-bold sm:text-2xl">Tham gia Gia phả họ Đỗ Văn</CardTitle>
                 <CardDescription>Đăng ký tham gia nền tảng gia phả dòng họ</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6">
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                     {!inviteCode && (
                         <div className="rounded-md bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
