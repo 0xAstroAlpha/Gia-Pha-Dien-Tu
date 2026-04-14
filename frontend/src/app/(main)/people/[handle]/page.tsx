@@ -17,6 +17,7 @@ import { useAuth } from '@/components/auth-provider';
 import { deletePerson } from '@/lib/supabase-data';
 import { getEffectiveGeneration } from '@/lib/person-effective-generation';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 function peq(a: string | null | undefined, b: string | null | undefined): boolean {
     return (a ?? null) === (b ?? null);
@@ -43,6 +44,33 @@ function childLabelFromGender(gender: number): 'Con trai' | 'Con gái' | 'Con' {
     if (gender === 1) return 'Con trai';
     if (gender === 2) return 'Con gái';
     return 'Con';
+}
+
+function toDayMonth(raw?: string): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+        return `${isoMatch[3]}/${isoMatch[2]}`;
+    }
+
+    const dmMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (dmMatch) {
+        return `${dmMatch[1].padStart(2, '0')}/${dmMatch[2].padStart(2, '0')}`;
+    }
+
+    return trimmed;
+}
+
+function formatDateWithYear(dateValue?: string, year?: number): string {
+    const dayMonth = toDayMonth(dateValue);
+    const y = typeof year === 'number' && !Number.isNaN(year) ? String(year) : null;
+    if (dayMonth && y) return `${dayMonth}/${y}`;
+    if (dayMonth) return dayMonth;
+    if (y) return y;
+    return '—';
 }
 
 async function loadRelationshipSnapshot(
@@ -130,25 +158,38 @@ async function loadRelationshipSnapshot(
     const childrenSet = new Set<string>();
     const seenSpouse = new Set<string>();
 
+    const ownFamilyRowsByHandle = new Map<string, Fam>();
     if (ownFamilies.length > 0) {
-        const { data: famRows } = await supabase
+        const { data: ownFamilyByHandleRows } = await supabase
             .from('families')
-            .select('father_handle, mother_handle, children')
+            .select('handle, father_handle, mother_handle, children')
             .in('handle', ownFamilies);
+        for (const row of (ownFamilyByHandleRows ?? []) as Fam[]) {
+            if (row.handle) ownFamilyRowsByHandle.set(row.handle, row);
+        }
+    }
 
-        for (const row of (famRows ?? []) as Fam[]) {
-            const fh = row.father_handle;
-            const mh = row.mother_handle;
-            let spouseH: string | null = null;
-            if (fh === personHandle) spouseH = mh;
-            else if (mh === personHandle) spouseH = fh;
-            if (spouseH && !seenSpouse.has(spouseH)) {
-                seenSpouse.add(spouseH);
-                spouses.push({ label: spouseLabel, name: '', handle: spouseH });
-            }
-            for (const c of row.children ?? []) {
-                childrenSet.add(c);
-            }
+    // Source of truth for spouse/children: families table where person is father/mother.
+    const { data: ownFamilyByParentRows } = await supabase
+        .from('families')
+        .select('handle, father_handle, mother_handle, children')
+        .or(`father_handle.eq.${personHandle},mother_handle.eq.${personHandle}`);
+    for (const row of (ownFamilyByParentRows ?? []) as Fam[]) {
+        if (row.handle) ownFamilyRowsByHandle.set(row.handle, row);
+    }
+
+    for (const row of ownFamilyRowsByHandle.values()) {
+        const fh = row.father_handle;
+        const mh = row.mother_handle;
+        let spouseH: string | null = null;
+        if (fh === personHandle) spouseH = mh;
+        else if (mh === personHandle) spouseH = fh;
+        if (spouseH && !seenSpouse.has(spouseH)) {
+            seenSpouse.add(spouseH);
+            spouses.push({ label: spouseLabel, name: '', handle: spouseH });
+        }
+        for (const c of row.children ?? []) {
+            childrenSet.add(c);
         }
     }
 
@@ -218,8 +259,6 @@ function rowToPersonDetail(row: Record<string, unknown>): PersonDetail {
         gramps_id: row.gramps_id as string | undefined,
         displayName: row.display_name as string,
         gender: row.gender as number,
-        surname: (row.surname as string) || undefined,
-        firstName: (row.first_name as string) || undefined,
         generation: row.generation as number,
         chi: row.chi as number | undefined,
         birthYear: row.birth_year as number | undefined,
@@ -251,11 +290,12 @@ export default function PersonProfilePage() {
     const params = useParams();
     const router = useRouter();
     const handle = params.handle as string;
-    const { isAdmin } = useAuth();
+    const { isAdmin, isLoggedIn } = useAuth();
     const [person, setPerson] = useState<PersonDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [peopleForDialog, setPeopleForDialog] = useState<PersonFormPerson[]>([]);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [relationships, setRelationships] = useState<RelationshipSnapshot | null>(null);
@@ -351,7 +391,6 @@ export default function PersonProfilePage() {
 
     async function handleDelete() {
         if (!isAdmin) return;
-        if (!window.confirm('Xóa người này? Hành động không thể hoàn tác.')) return;
         setDeleteError(null);
         setDeleting(true);
         const { error } = await deletePerson(handle);
@@ -360,6 +399,7 @@ export default function PersonProfilePage() {
             setDeleteError(error);
             return;
         }
+        setDeleteConfirmOpen(false);
         router.push('/people');
     }
 
@@ -417,30 +457,32 @@ export default function PersonProfilePage() {
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        className="gap-2"
-                        disabled={!isAdmin || deleting}
-                        title={!isAdmin ? 'Chỉ quản trị viên có thể xóa' : undefined}
-                        onClick={() => { void handleDelete(); }}
-                    >
-                        <Trash2 className="h-4 w-4" />
-                        {deleting ? 'Đang xóa...' : 'Xóa'}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => setDialogOpen(true)}
-                    >
-                        <Pencil className="h-4 w-4" />
-                        Sửa
-                    </Button>
-                </div>
+                {isLoggedIn && (
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="gap-2"
+                            disabled={!isAdmin || deleting}
+                            title={!isAdmin ? 'Chỉ quản trị viên có thể xóa' : undefined}
+                            onClick={() => setDeleteConfirmOpen(true)}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                            {deleting ? 'Đang xóa...' : 'Xóa'}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setDialogOpen(true)}
+                        >
+                            <Pencil className="h-4 w-4" />
+                            Sửa
+                        </Button>
+                    </div>
+                )}
             </div>
 
             {deleteError && (
@@ -485,39 +527,25 @@ export default function PersonProfilePage() {
                                 <User className="h-4 w-4" /> Thông tin cá nhân
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="grid gap-4 md:grid-cols-2">
-                            <InfoRow label="Họ" value={person.surname || '—'} />
-                            <InfoRow label="Tên" value={person.firstName || '—'} />
-                            <InfoRow label="Giới tính" value={genderLabel} />
-                            {person.nickName && <InfoRow label="Tên thường gọi" value={person.nickName} />}
-                            <InfoRow label="Ngày sinh" value={person.birthDate || (person.birthYear ? `${person.birthYear}` : '—')} />
-                            {person.birthYear && <InfoRow label="Năm âm lịch" value={zodiacYear(person.birthYear) || '—'} />}
-                            <InfoRow label="Nơi sinh" value={person.birthPlace || '—'} />
-                            {!person.isLiving && (
-                                <>
-                                    <InfoRow label="Ngày mất" value={person.deathDate || (person.deathYear ? `${person.deathYear}` : '—')} />
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <InfoRow label="Giới tính" value={genderLabel} />
+                                <InfoRow label="Số điện thoại" value={person.phone || '—'} />
+                            </div>
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="grid gap-4">
+                                    <InfoRow label="Ngày sinh" value={formatDateWithYear(person.birthDate, person.birthYear)} />
+                                    <InfoRow label="Năm âm lịch" value={zodiacYear(person.birthYear) || '—'} />
+                                    <InfoRow label="Nơi sinh" value={person.birthPlace || '—'} />
+                                </div>
+                                <div className="grid gap-4">
+                                    <InfoRow label="Ngày mất" value={formatDateWithYear(person.deathDate, person.deathYear)} />
+                                    <InfoRow label="Năm âm lịch" value={zodiacYear(person.deathYear) || '—'} />
                                     <InfoRow label="Nơi mất" value={person.deathPlace || '—'} />
-                                </>
-                            )}
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
-
-                    {/* Liên hệ */}
-                    {(person.phone || person.email || person.zalo || person.facebook) && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <Phone className="h-4 w-4" /> Liên hệ
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="grid gap-4 md:grid-cols-2">
-                                {person.phone && <InfoRow label="Điện thoại" value={person.phone} />}
-                                {person.email && <InfoRow label="Email" value={person.email} />}
-                                {person.zalo && <InfoRow label="Zalo" value={person.zalo} />}
-                                {person.facebook && <InfoRow label="Facebook" value={person.facebook} />}
-                            </CardContent>
-                        </Card>
-                    )}
 
                     {/* Địa chỉ */}
                     {(person.hometown || person.currentAddress) && (
@@ -810,6 +838,35 @@ export default function PersonProfilePage() {
                     void fetchPeopleForDialog();
                 }}
             />
+
+            <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Xác nhận xóa thành viên</DialogTitle>
+                        <DialogDescription>
+                            Bạn có chắc chắn muốn xóa thành viên này không? Hành động này không thể hoàn tác.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setDeleteConfirmOpen(false)}
+                            disabled={deleting}
+                        >
+                            Hủy
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => { void handleDelete(); }}
+                            disabled={deleting}
+                        >
+                            {deleting ? 'Đang xóa...' : 'Xóa'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

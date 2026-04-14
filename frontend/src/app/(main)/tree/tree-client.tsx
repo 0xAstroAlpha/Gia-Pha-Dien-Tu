@@ -1315,7 +1315,13 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                         {initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[10px] leading-tight text-slate-800 truncate">{node.displayName}</p>
+                        <p
+                            className="font-semibold text-[10px] leading-tight text-slate-800 overflow-hidden break-words"
+                            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                            title={node.displayName}
+                        >
+                            {node.displayName}
+                        </p>
                         <span className="text-[8px] font-semibold px-0.5 py-px rounded bg-amber-100 text-amber-700">Đời {item.generation + 1}</span>
                     </div>
                 </div>
@@ -1362,7 +1368,11 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[11px] leading-tight text-slate-800 truncate">
+                    <p
+                        className="font-semibold text-[11px] leading-tight text-slate-800 overflow-hidden break-words"
+                        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                        title={node.displayName}
+                    >
                         {node.displayName}
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5">
@@ -1370,15 +1380,15 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                             ? `${node.birthYear}${node.deathYear ? ` — ${node.deathYear}` : node.isLiving ? ' — nay' : ''}`
                             : '—'}
                     </p>
-                    <div className="mt-0.5 flex items-center gap-1">
-                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200/60">Đời {item.generation + 1}</span>
+                    <div className="mt-0.5 flex items-center gap-1 whitespace-nowrap">
+                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200/60 shrink-0">Đời {item.generation + 1}</span>
                         {isDead ? (
-                            <span className="text-[9px] text-slate-400">✝ Đã mất</span>
+                            <span className="text-[9px] text-slate-400 shrink-0">✝ Đã mất</span>
                         ) : (
-                            <span className="text-[9px] text-emerald-600 font-medium">● Còn sống</span>
+                            <span className="text-[9px] text-emerald-600 font-medium shrink-0">● Còn sống</span>
                         )}
                         {!isPatri && (
-                            <span className="text-[9px] text-slate-400 ml-0.5">· Ngoại tộc</span>
+                            <span className="text-[9px] text-slate-400 shrink-0">· Ngoại tộc</span>
                         )}
                     </div>
                 </div>

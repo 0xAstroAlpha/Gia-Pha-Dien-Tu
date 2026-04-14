@@ -8,8 +8,6 @@ export interface PersonDetail {
     gramps_id?: string;
     gender: number;
     displayName: string;
-    surname?: string;
-    firstName?: string;
     generation: number;
     chi?: number;
     birthYear?: number;

@@ -7,11 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useAuth } from '@/components/auth-provider';
 
 export interface PersonFormPerson {
     handle: string;
     displayName: string;
     gender: number;
+    phone?: string;
     birthYear?: number;
     deathYear?: number;
     isLiving: boolean;
@@ -27,7 +29,43 @@ export interface PersonFormDialogProps {
     onSaved?: (payload: { handle: string; created: boolean }) => void;
 }
 
+function normalizeDayMonthInput(raw: string): { value: string | null; error: string | null } {
+    const trimmed = raw.trim();
+    if (!trimmed) return { value: null, error: null };
+    const m = trimmed.match(/^(\d{1,2})\s*\/\s*(\d{1,2})$/);
+    if (!m) {
+        return { value: null, error: 'Định dạng hợp lệ: DD/MM.' };
+    }
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    if (!Number.isInteger(day) || !Number.isInteger(month) || day < 1 || month < 1 || month > 12) {
+        return { value: null, error: 'Ngày hoặc tháng không hợp lệ.' };
+    }
+    const maxDays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    if (day > maxDays) {
+        return { value: null, error: 'Ngày hoặc tháng không hợp lệ.' };
+    }
+    return {
+        value: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`,
+        error: null,
+    };
+}
+
+function toDayMonthDisplay(raw: unknown): string {
+    if (typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) {
+        return `${iso[3]}/${iso[2]}`;
+    }
+    const normalized = normalizeDayMonthInput(trimmed);
+    if (!normalized.error && normalized.value) return normalized.value;
+    return trimmed;
+}
+
 export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle, onSaved }: PersonFormDialogProps) {
+    const { isLoggedIn } = useAuth();
     const [createSaving, setCreateSaving] = useState(false);
         const [createError, setCreateError] = useState<string | null>(null);
         const [internalEditHandle, setInternalEditHandle] = useState<string | null>(null);
@@ -37,16 +75,75 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
         const [childQuery, setChildQuery] = useState('');
         const [fatherQuery, setFatherQuery] = useState('');
         const [motherQuery, setMotherQuery] = useState('');
+    const [dateErrors, setDateErrors] = useState<{ birthDate?: string; deathDate?: string }>({});
     const [form, setForm] = useState({
         name: '',
         gender: 1 as 1 | 2,
+        phone: '',
+        birthDate: '',
         birthYear: '',
+        birthPlace: '',
+        deathDate: '',
         deathYear: '',
+        deathPlace: '',
         fatherHandle: '',
         motherHandle: '',
         spouseHandles: [] as string[],
         childrenHandles: [] as string[],
     });
+
+    function createFamilyHandle(): string {
+        return `F${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1_000_000).toString(36).toUpperCase()}`;
+    }
+
+    function normalizeParentHandlesByGender(
+        rawFatherHandle: string | null,
+        rawMotherHandle: string | null,
+        context?: { selfHandle: string; selfGender: number },
+    ): { fatherHandle: string | null; motherHandle: string | null } {
+        const candidates: string[] = [];
+        const seen = new Set<string>();
+        for (const h of [rawFatherHandle, rawMotherHandle]) {
+            if (!h) continue;
+            if (seen.has(h)) continue;
+            seen.add(h);
+            candidates.push(h);
+        }
+
+        const getGender = (handle: string): number | null => {
+            if (context && handle === context.selfHandle) return context.selfGender;
+            const p = people.find((x) => x.handle === handle);
+            return typeof p?.gender === 'number' ? p.gender : null;
+        };
+
+        let fatherHandle: string | null = null;
+        let motherHandle: string | null = null;
+
+        for (const h of candidates) {
+            const g = getGender(h);
+            if (g === 1 && !fatherHandle) {
+                fatherHandle = h;
+                continue;
+            }
+            if (g === 2 && !motherHandle) {
+                motherHandle = h;
+                continue;
+            }
+        }
+
+        for (const h of candidates) {
+            if (h === fatherHandle || h === motherHandle) continue;
+            if (!fatherHandle) {
+                fatherHandle = h;
+                continue;
+            }
+            if (!motherHandle) {
+                motherHandle = h;
+            }
+        }
+
+        return { fatherHandle, motherHandle };
+    }
 
     async function openCreateModal() {
         setCreateError(null);
@@ -55,11 +152,17 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
         setEditBirthFamilyHandle(null);
         setFatherQuery('');
         setMotherQuery('');
+        setDateErrors({});
         setForm({
             name: '',
             gender: 1,
+            phone: '',
+            birthDate: '',
             birthYear: '',
+            birthPlace: '',
+            deathDate: '',
             deathYear: '',
+            deathPlace: '',
             fatherHandle: '',
             motherHandle: '',
             spouseHandles: [],
@@ -74,7 +177,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 const { supabase } = await import('@/lib/supabase');
                 const { data, error } = await supabase
                     .from('people')
-                    .select('handle, display_name, gender, birth_year, death_year, is_living, is_privacy_filtered')
+                    .select('handle, display_name, gender, phone, birth_year, death_year, is_living, is_privacy_filtered')
                     .eq('handle', handle)
                     .single();
                 if (!error && data) {
@@ -83,6 +186,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                         handle: row.handle as string,
                         displayName: row.display_name as string,
                         gender: row.gender as number,
+                        phone: row.phone as string | undefined,
                         birthYear: row.birth_year as number | undefined,
                         deathYear: row.death_year as number | undefined,
                         isLiving: row.is_living as boolean,
@@ -93,6 +197,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
         }
         if (!person) return;
         setCreateError(null);
+        setDateErrors({});
         setInternalEditHandle(handle);
             setEditFamilyHandle(null);
             setEditBirthFamilyHandle(null);
@@ -103,8 +208,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
             setForm({
                 name: person.displayName ?? '',
                 gender: (person.gender === 2 ? 2 : 1),
+                phone: person.phone ?? '',
+                birthDate: '',
                 birthYear: person.birthYear ? String(person.birthYear) : '',
+                birthPlace: '',
+                deathDate: '',
                 deathYear: person.deathYear ? String(person.deathYear) : '',
+                deathPlace: '',
                 fatherHandle: '',
                 motherHandle: '',
                 spouseHandles: [],
@@ -113,6 +223,24 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
 
             try {
                 const { supabase } = await import('@/lib/supabase');
+
+                const { data: detailRow } = await supabase
+                    .from('people')
+                    .select('phone, birth_date, birth_place, death_date, death_place')
+                    .eq('handle', handle)
+                    .maybeSingle();
+
+                if (detailRow) {
+                    const r = detailRow as Record<string, unknown>;
+                    setForm(prev => ({
+                        ...prev,
+                        phone: (r.phone as string) ?? prev.phone,
+                        birthDate: toDayMonthDisplay(r.birth_date),
+                        birthPlace: (r.birth_place as string) ?? '',
+                        deathDate: toDayMonthDisplay(r.death_date),
+                        deathPlace: (r.death_place as string) ?? '',
+                    }));
+                }
     
                 // Birth family (where this person is a child) → Bố / Mẹ
                 const { data: birthRows } = await supabase
@@ -152,6 +280,10 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
         }
 
         async function handleCreatePerson() {
+            if (!isLoggedIn) {
+                setCreateError('Bạn cần đăng nhập để lưu thay đổi thành viên.');
+                return;
+            }
             const name = form.name.trim();
             if (!name) {
                 setCreateError('Vui lòng nhập họ tên.');
@@ -160,6 +292,19 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
     
             const birthYear = form.birthYear.trim() ? parseInt(form.birthYear.trim(), 10) : null;
             const deathYear = form.deathYear.trim() ? parseInt(form.deathYear.trim(), 10) : null;
+                const birthDateParsed = normalizeDayMonthInput(form.birthDate);
+                const deathDateParsed = normalizeDayMonthInput(form.deathDate);
+                const phone = form.phone.trim() || null;
+                const nextDateErrors: { birthDate?: string; deathDate?: string } = {};
+                if (birthDateParsed.error) nextDateErrors.birthDate = birthDateParsed.error;
+                if (deathDateParsed.error) nextDateErrors.deathDate = deathDateParsed.error;
+                setDateErrors(nextDateErrors);
+                if (nextDateErrors.birthDate || nextDateErrors.deathDate) return;
+
+                const birthDate = birthDateParsed.value;
+                const birthPlace = form.birthPlace.trim() || null;
+                const deathDate = deathDateParsed.value;
+                const deathPlace = form.deathPlace.trim() || null;
             if (birthYear !== null && Number.isNaN(birthYear)) {
                 setCreateError('Năm sinh không hợp lệ.');
                 return;
@@ -177,26 +322,49 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
     
             try {
                 const { supabase } = await import('@/lib/supabase');
-    
-                const personHandle = internalEditHandle ?? `P${Date.now().toString(36).toUpperCase()}`;
-                const isCreateMode = !internalEditHandle;
+
+                // Prefer explicit target handle from parent page when editing.
+                // This avoids accidental fallback to "create mode" if internal state lags.
+                const resolvedEditHandle = targetEditHandle ?? internalEditHandle ?? null;
+                const personHandle = resolvedEditHandle ?? `P${Date.now().toString(36).toUpperCase()}`;
+                const isCreateMode = !resolvedEditHandle;
+                const isEditMode = !!resolvedEditHandle;
                 const isLiving = deathYear ? false : true;
+
+                const handleRelationshipError = (message: string): boolean => {
+                    if (isEditMode) {
+                        console.error('Relationship sync warning:', message);
+                        return false;
+                    }
+                    setCreateError(message);
+                    return true;
+                };
     
-                if (internalEditHandle) {
-                    const { error: updateError } = await supabase
+                if (resolvedEditHandle) {
+                    const { data: updatedPerson, error: updateError } = await supabase
                         .from('people')
                         .update({
                             display_name: name,
                             gender: form.gender,
+                            phone,
+                            birth_date: birthDate,
                             birth_year: birthYear,
+                            birth_place: birthPlace,
+                            death_date: deathDate,
                             death_year: deathYear,
+                            death_place: deathPlace,
                             is_living: isLiving,
                             is_patrilineal: form.gender === 1,
-                            updated_at: new Date().toISOString(),
                         })
-                        .eq('handle', personHandle);
+                        .eq('handle', personHandle)
+                        .select('handle, display_name, gender, birth_year, death_year, is_living')
+                        .maybeSingle();
                     if (updateError) {
                         setCreateError(updateError.message);
+                        return;
+                    }
+                    if (!updatedPerson) {
+                        setCreateError('Không thể lưu thay đổi cho người này (không tìm thấy bản ghi để cập nhật).');
                         return;
                     }
                 } else {
@@ -206,6 +374,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                             handle: personHandle,
                             display_name: name,
                             gender: form.gender,
+                            phone,
                             birth_year: birthYear,
                             death_year: deathYear,
                             is_living: isLiving,
@@ -221,104 +390,91 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 }
     
                 // ── Bố / Mẹ (gia đình sinh) ──
-                const desiredFather = form.fatherHandle.trim() || null;
-                const desiredMother = form.motherHandle.trim() || null;
+                const normalizedBirthParents = normalizeParentHandlesByGender(
+                    form.fatherHandle.trim() || null,
+                    form.motherHandle.trim() || null,
+                );
+                const desiredFather = normalizedBirthParents.fatherHandle;
+                const desiredMother = normalizedBirthParents.motherHandle;
     
                 async function syncBirthFamilyLink() {
-                    const removeFromFamilyChildren = async (familyHandle: string) => {
-                        const { data: famRow } = await supabase
-                            .from('families')
-                            .select('children')
-                            .eq('handle', familyHandle)
-                            .single();
-                        const ch = (famRow?.children as string[]) ?? [];
-                        if (!ch.includes(personHandle)) return;
-                        await supabase
-                            .from('families')
-                            .update({
-                                children: ch.filter(c => c !== personHandle),
-                                updated_at: new Date().toISOString(),
-                            })
-                            .eq('handle', familyHandle);
-                    };
-    
-                    // Unchanged birth parents → only ensure links, do not unlink
-                    if (editBirthFamilyHandle && (desiredFather || desiredMother)) {
-                        const { data: curBirth } = await supabase
-                            .from('families')
-                            .select('father_handle, mother_handle, children')
-                            .eq('handle', editBirthFamilyHandle)
-                            .single();
-                        if (
-                            curBirth &&
-                            (curBirth.father_handle ?? null) === (desiredFather ?? null) &&
-                            (curBirth.mother_handle ?? null) === (desiredMother ?? null)
-                        ) {
-                            const ch = (curBirth.children as string[]) ?? [];
-                            if (!ch.includes(personHandle)) {
-                                await supabase
-                                    .from('families')
-                                    .update({
-                                        children: [...ch, personHandle],
-                                        updated_at: new Date().toISOString(),
-                                    })
-                                    .eq('handle', editBirthFamilyHandle);
-                            }
-                            const { data: pRow } = await supabase
-                                .from('people')
-                                .select('parent_families')
-                                .eq('handle', personHandle)
-                                .single();
-                            let pf = (pRow?.parent_families as string[]) ?? [];
-                            if (!pf.includes(editBirthFamilyHandle)) {
-                                pf = [...pf, editBirthFamilyHandle];
-                                await supabase.from('people').update({ parent_families: pf }).eq('handle', personHandle);
-                            }
-                            return;
-                        }
-                    }
-    
-                    const { data: personRow } = await supabase
+                    const { data: personRow, error: personRowErr } = await supabase
                         .from('people')
                         .select('parent_families')
                         .eq('handle', personHandle)
                         .single();
+                    if (personRowErr) throw new Error(personRowErr.message);
                     let parentFamilies = (personRow?.parent_families as string[]) ?? [];
-    
-                    if (editBirthFamilyHandle) {
-                        parentFamilies = parentFamilies.filter(f => f !== editBirthFamilyHandle);
-                        await removeFromFamilyChildren(editBirthFamilyHandle);
-                    }
-    
-                    if (!desiredFather && !desiredMother) {
-                        await supabase.from('people').update({ parent_families: parentFamilies }).eq('handle', personHandle);
-                        return;
-                    }
-    
-                    const { data: allFamilies } = await supabase
+
+                    const { data: allFamilies, error: allFamiliesErr } = await supabase
                         .from('families')
                         .select('handle, father_handle, mother_handle, children');
+                    if (allFamiliesErr) throw new Error(allFamiliesErr.message);
+
+                    const familiesContainingChild = (allFamilies ?? []).filter(f =>
+                        ((f.children as string[]) ?? []).includes(personHandle),
+                    );
+
+                    const upsertFamilyChildren = async (familyHandle: string, nextChildren: string[]) => {
+                        const { error } = await supabase
+                            .from('families')
+                            .update({ children: nextChildren })
+                            .eq('handle', familyHandle);
+                        if (error) throw new Error(error.message);
+                    };
+
+                    if (!desiredFather && !desiredMother) {
+                        for (const fam of familiesContainingChild) {
+                            const ch = (fam.children as string[]) ?? [];
+                            if (!ch.includes(personHandle)) continue;
+                            await upsertFamilyChildren(
+                                fam.handle as string,
+                                ch.filter(c => c !== personHandle),
+                            );
+                        }
+
+                        const toRemove = new Set(familiesContainingChild.map(f => f.handle as string));
+                        parentFamilies = parentFamilies.filter(f => !toRemove.has(f));
+                        const { error: upErr } = await supabase
+                            .from('people')
+                            .update({ parent_families: parentFamilies })
+                            .eq('handle', personHandle);
+                        if (upErr) throw new Error(upErr.message);
+                        return;
+                    }
     
                     const match = (allFamilies ?? []).find(f =>
                         (f.father_handle ?? null) === (desiredFather ?? null) &&
                         (f.mother_handle ?? null) === (desiredMother ?? null)
                     );
     
-                    let targetFamilyHandle: string;
+                    let targetFamilyHandle: string | null = null;
                     if (match?.handle) {
                         targetFamilyHandle = match.handle as string;
                         const ch = (match.children as string[]) ?? [];
                         if (!ch.includes(personHandle)) {
-                            await supabase
-                                .from('families')
-                                .update({
-                                    children: [...ch, personHandle],
-                                    updated_at: new Date().toISOString(),
-                                })
-                                .eq('handle', targetFamilyHandle);
+                            await upsertFamilyChildren(targetFamilyHandle, [...ch, personHandle]);
+                        }
+                    } else if (editBirthFamilyHandle) {
+                        targetFamilyHandle = editBirthFamilyHandle;
+                        const current = (allFamilies ?? []).find(f => f.handle === editBirthFamilyHandle);
+                        const currentChildren = (current?.children as string[]) ?? [];
+                        const nextChildren = currentChildren.includes(personHandle)
+                            ? currentChildren
+                            : [...currentChildren, personHandle];
+                        const { error: upErr } = await supabase
+                            .from('families')
+                            .update({
+                                father_handle: desiredFather,
+                                mother_handle: desiredMother,
+                                children: nextChildren,
+                            })
+                            .eq('handle', targetFamilyHandle);
+                        if (upErr) {
+                            throw new Error(upErr.message);
                         }
                     } else {
-                        targetFamilyHandle = `F${Date.now().toString(36).toUpperCase()}`;
+                        targetFamilyHandle = createFamilyHandle();
                         const { error: insErr } = await supabase.from('families').insert({
                             handle: targetFamilyHandle,
                             father_handle: desiredFather,
@@ -330,17 +486,36 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                             throw new Error(insErr.message);
                         }
                     }
-    
+
+                    if (!targetFamilyHandle) {
+                        throw new Error('Không xác định được gia đình sinh.');
+                    }
+
+                    // Keep this child in exactly one birth family to avoid ambiguous reads.
+                    for (const fam of familiesContainingChild) {
+                        const h = fam.handle as string;
+                        if (h === targetFamilyHandle) continue;
+                        const ch = (fam.children as string[]) ?? [];
+                        if (!ch.includes(personHandle)) continue;
+                        await upsertFamilyChildren(h, ch.filter(c => c !== personHandle));
+                    }
+
+                    const removeHandles = new Set(familiesContainingChild.map(f => f.handle as string));
+                    parentFamilies = parentFamilies.filter(f => !removeHandles.has(f));
                     if (!parentFamilies.includes(targetFamilyHandle)) {
                         parentFamilies = [...parentFamilies, targetFamilyHandle];
                     }
-                    await supabase.from('people').update({ parent_families: parentFamilies }).eq('handle', personHandle);
+                    const { error: peopleUpErr } = await supabase
+                        .from('people')
+                        .update({ parent_families: parentFamilies })
+                        .eq('handle', personHandle);
+                    if (peopleUpErr) throw new Error(peopleUpErr.message);
                 }
     
                 try {
                     await syncBirthFamilyLink();
-                } catch {
-                    return;
+                } catch (err) {
+                    if (handleRelationshipError(err instanceof Error ? err.message : 'Không thể lưu quan hệ bố/mẹ.')) return;
                 }
     
                 // ── Hôn nhân + Con cái ──
@@ -376,7 +551,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
     
                 if (wantsPrimaryFamily) {
                     const primarySpouseHandle = spouseHandles[0] ?? '';
-                    const primaryFamilyHandle = editFamilyHandle ?? `F${Date.now().toString(36).toUpperCase()}`;
+                    const primaryFamilyHandle = editFamilyHandle ?? createFamilyHandle();
     
                     // When editing an existing family, remove link from previous spouse if spouse changed
                     if (editFamilyHandle) {
@@ -406,12 +581,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                     }
     
                     const spouse = primarySpouseHandle ? people.find(p => p.handle === primarySpouseHandle) : undefined;
-                    const fatherHandle =
-                        (form.gender === 1 ? personHandle : undefined) ??
-                        (spouse?.gender === 1 ? primarySpouseHandle : undefined);
-                    const motherHandle =
-                        (form.gender === 2 ? personHandle : undefined) ??
-                        (spouse?.gender === 2 ? primarySpouseHandle : undefined);
+                    const normalizedPrimaryParents = normalizeParentHandlesByGender(
+                        personHandle,
+                        spouse ? primarySpouseHandle : null,
+                        { selfHandle: personHandle, selfGender: form.gender },
+                    );
+                    const fatherHandle = normalizedPrimaryParents.fatherHandle;
+                    const motherHandle = normalizedPrimaryParents.motherHandle;
     
                     if (editFamilyHandle) {
                         const { error } = await supabase
@@ -420,12 +596,10 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                 father_handle: fatherHandle ?? null,
                                 mother_handle: motherHandle ?? null,
                                 children: childrenHandles,
-                                updated_at: new Date().toISOString(),
                             })
                             .eq('handle', primaryFamilyHandle);
                         if (error) {
-                            setCreateError(error.message);
-                            return;
+                            if (handleRelationshipError(error.message)) return;
                         }
                     } else {
                         const { error } = await supabase
@@ -437,8 +611,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                 children: childrenHandles,
                             });
                         if (error) {
-                            setCreateError(error.message);
-                            return;
+                            if (handleRelationshipError(error.message)) return;
                         }
                     }
     
@@ -449,14 +622,15 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
     
                     // Additional spouses → create extra family records (no children)
                     for (const extraSpouse of spouseHandles.slice(1)) {
-                        const famHandle = `F${(Date.now() + Math.floor(Math.random() * 10000)).toString(36).toUpperCase()}`;
+                        const famHandle = createFamilyHandle();
                         const extra = people.find(p => p.handle === extraSpouse);
-                        const fH =
-                            (form.gender === 1 ? personHandle : undefined) ??
-                            (extra?.gender === 1 ? extraSpouse : undefined);
-                        const mH =
-                            (form.gender === 2 ? personHandle : undefined) ??
-                            (extra?.gender === 2 ? extraSpouse : undefined);
+                        const normalizedExtraParents = normalizeParentHandlesByGender(
+                            personHandle,
+                            extra ? extraSpouse : null,
+                            { selfHandle: personHandle, selfGender: form.gender },
+                        );
+                        const fH = normalizedExtraParents.fatherHandle;
+                        const mH = normalizedExtraParents.motherHandle;
     
                         const { error } = await supabase
                             .from('families')
@@ -467,8 +641,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                 children: [],
                             });
                         if (error) {
-                            setCreateError(error.message);
-                            return;
+                            if (handleRelationshipError(error.message)) return;
                         }
                         createdFamilyHandles.push(famHandle);
                         await addFamilyToPersonFamilies(personHandle, famHandle);
@@ -482,8 +655,13 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 setForm({
                     name: '',
                     gender: 1,
+                    phone: '',
+                    birthDate: '',
                     birthYear: '',
+                    birthPlace: '',
+                    deathDate: '',
                     deathYear: '',
+                    deathPlace: '',
                     fatherHandle: '',
                     motherHandle: '',
                     spouseHandles: [],
@@ -544,6 +722,7 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 onOpenChange(o);
                 if (!o) {
                     setCreateError(null);
+                    setDateErrors({});
                     setInternalEditHandle(null);
                     setEditFamilyHandle(null);
                     setEditBirthFamilyHandle(null);
@@ -554,12 +733,12 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                 }
             }}
         >
-                    <DialogContent>
-                        <DialogHeader>
+                    <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
+                        <DialogHeader className="shrink-0 border-b px-6 py-4">
                             <DialogTitle>{(targetEditHandle ?? internalEditHandle) ? 'Sửa thành viên' : 'Tạo thành viên'}</DialogTitle>
                         </DialogHeader>
-    
-                        <div className="grid gap-3">
+
+                        <div className="grid gap-3 overflow-y-auto px-6 py-4">
                             <div className="grid gap-1.5">
                                 <label className="text-sm font-medium">Họ tên</label>
                                 <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Nguyễn Văn A" />
@@ -578,17 +757,89 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                                     </Button>
                                 </div>
                             </div>
-    
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="grid gap-1.5">
-                                    <label className="text-sm font-medium">Năm sinh</label>
-                                    <Input inputMode="numeric" value={form.birthYear} onChange={(e) => setForm(f => ({ ...f, birthYear: e.target.value }))} placeholder="1990" />
-                                </div>
-                                <div className="grid gap-1.5">
-                                    <label className="text-sm font-medium">Năm mất</label>
-                                    <Input inputMode="numeric" value={form.deathYear} onChange={(e) => setForm(f => ({ ...f, deathYear: e.target.value }))} placeholder="—" />
-                                </div>
+
+                            <div className="grid gap-1.5">
+                                <label className="text-sm font-medium">Số điện thoại</label>
+                                <Input
+                                    value={form.phone}
+                                    onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
+                                    placeholder="VD: 09xxxxxxxx"
+                                />
                             </div>
+    
+                            {(targetEditHandle ?? internalEditHandle) ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="grid gap-1.5">
+                                        <label className="text-sm font-medium">Ngày sinh</label>
+                                        <Input
+                                            value={form.birthDate}
+                                            inputMode="numeric"
+                                            maxLength={5}
+                                            onChange={(e) => {
+                                                setForm(f => ({ ...f, birthDate: e.target.value }));
+                                                setDateErrors((prev) => ({ ...prev, birthDate: undefined }));
+                                            }}
+                                            onBlur={() => {
+                                                const normalized = normalizeDayMonthInput(form.birthDate);
+                                                if (normalized.error) {
+                                                    setDateErrors((prev) => ({ ...prev, birthDate: normalized.error ?? undefined }));
+                                                    return;
+                                                }
+                                                setDateErrors((prev) => ({ ...prev, birthDate: undefined }));
+                                                setForm(f => ({ ...f, birthDate: normalized.value ?? '' }));
+                                            }}
+                                            placeholder="DD/MM"
+                                        />
+                                        {dateErrors.birthDate && (
+                                            <p className="text-xs text-red-600">{dateErrors.birthDate}</p>
+                                        )}
+                                        <label className="text-sm font-medium">Năm sinh</label>
+                                        <Input inputMode="numeric" value={form.birthYear} onChange={(e) => setForm(f => ({ ...f, birthYear: e.target.value }))} placeholder="1990" />
+                                        <label className="text-sm font-medium">Nơi sinh</label>
+                                        <Input value={form.birthPlace} onChange={(e) => setForm(f => ({ ...f, birthPlace: e.target.value }))} placeholder="—" />
+                                    </div>
+                                    <div className="grid gap-1.5">
+                                        <label className="text-sm font-medium">Ngày mất</label>
+                                        <Input
+                                            value={form.deathDate}
+                                            inputMode="numeric"
+                                            maxLength={5}
+                                            onChange={(e) => {
+                                                setForm(f => ({ ...f, deathDate: e.target.value }));
+                                                setDateErrors((prev) => ({ ...prev, deathDate: undefined }));
+                                            }}
+                                            onBlur={() => {
+                                                const normalized = normalizeDayMonthInput(form.deathDate);
+                                                if (normalized.error) {
+                                                    setDateErrors((prev) => ({ ...prev, deathDate: normalized.error ?? undefined }));
+                                                    return;
+                                                }
+                                                setDateErrors((prev) => ({ ...prev, deathDate: undefined }));
+                                                setForm(f => ({ ...f, deathDate: normalized.value ?? '' }));
+                                            }}
+                                            placeholder="DD/MM"
+                                        />
+                                        {dateErrors.deathDate && (
+                                            <p className="text-xs text-red-600">{dateErrors.deathDate}</p>
+                                        )}
+                                        <label className="text-sm font-medium">Năm mất</label>
+                                        <Input inputMode="numeric" value={form.deathYear} onChange={(e) => setForm(f => ({ ...f, deathYear: e.target.value }))} placeholder="—" />
+                                        <label className="text-sm font-medium">Nơi mất</label>
+                                        <Input value={form.deathPlace} onChange={(e) => setForm(f => ({ ...f, deathPlace: e.target.value }))} placeholder="—" />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid gap-1.5">
+                                        <label className="text-sm font-medium">Năm sinh</label>
+                                        <Input inputMode="numeric" value={form.birthYear} onChange={(e) => setForm(f => ({ ...f, birthYear: e.target.value }))} placeholder="1990" />
+                                    </div>
+                                    <div className="grid gap-1.5">
+                                        <label className="text-sm font-medium">Năm mất</label>
+                                        <Input inputMode="numeric" value={form.deathYear} onChange={(e) => setForm(f => ({ ...f, deathYear: e.target.value }))} placeholder="—" />
+                                    </div>
+                                </div>
+                            )}
     
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="grid gap-1.5">
@@ -856,11 +1107,11 @@ export function PersonFormDialog({ open, onOpenChange, people, targetEditHandle,
                             )}
                         </div>
     
-                        <DialogFooter>
+                        <DialogFooter className="shrink-0 border-t px-6 py-4">
                             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={createSaving}>
                                 Hủy
                             </Button>
-                            <Button type="button" onClick={handleCreatePerson} disabled={createSaving}>
+                            <Button type="button" onClick={handleCreatePerson} disabled={createSaving || !isLoggedIn} title={!isLoggedIn ? 'Đăng nhập để lưu thay đổi' : undefined}>
                                 {createSaving
                                     ? ((targetEditHandle ?? internalEditHandle) ? 'Đang lưu...' : 'Đang tạo...')
                                     : ((targetEditHandle ?? internalEditHandle) ? 'Lưu' : 'Tạo')}
