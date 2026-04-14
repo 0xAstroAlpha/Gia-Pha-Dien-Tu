@@ -66,7 +66,7 @@ export interface LayoutResult {
 }
 
 // Sizing
-export const CARD_W = 180;
+export const CARD_W = 210;
 export const CARD_H = 80;
 /** Default horizontal spacing for contours / generic use. */
 export const H_SPACE = 36;
@@ -74,16 +74,16 @@ export const H_SPACE = 36;
  * Gap between different *households* on the same doi (e.g. one married sibling's family vs another's).
  * Spouses + their kids stay tight; cousins' families get this space between them.
  */
-export const FAMILY_GROUP_GAP = 56;
+export const FAMILY_GROUP_GAP = 4;
 /** Gap between sibling child subtrees under the *same* parents (tight nuclear family). */
 export const INTRA_FAMILY_SIBLING_GAP = 18;
 export const V_SPACE = 80;
 /** Default horizontal gap between vo/chong cards (heart sits in this gap); use getCoupleGapForFamily for dynamic. */
-export const COUPLE_GAP_BASE = 22;
+export const COUPLE_GAP_BASE = 14;
 /** @deprecated Use COUPLE_GAP_BASE or getCoupleGapForFamily -- kept for callers expecting COUPLE_GAP */
 export const COUPLE_GAP = COUPLE_GAP_BASE;
 const COUPLE_GAP_PER_EXTRA_MARRIAGE = 10;
-const MAX_COUPLE_GAP_EXTRA = 36;
+const MAX_COUPLE_GAP_EXTRA = 24;
 
 /**
  * Counts full marriages (both parents) where handle is a parent -- used to widen couple gap
@@ -688,19 +688,77 @@ function realignChildrenToCoupleHeart(allNodes: PositionedNode[], families: Tree
     }
 }
 
+/**
+ * Keep family->children relationships consistent with each child's `parentFamilies`.
+ * If a child declares parent families, only those families are allowed to render that child.
+ * This prevents a child from appearing under the wrong couple when stale family rows exist.
+ */
+function normalizeFamiliesByParentLinks(people: TreeNode[], families: TreeFamily[]): TreeFamily[] {
+    const personMap = new Map(people.map((p) => [p.handle, p]));
+    const familyMap = new Map(families.map((f) => [f.handle, f]));
+
+    const familiesContainingChild = new Map<string, string[]>();
+    for (const fam of families) {
+        for (const ch of fam.children) {
+            if (!familiesContainingChild.has(ch)) familiesContainingChild.set(ch, []);
+            familiesContainingChild.get(ch)!.push(fam.handle);
+        }
+    }
+
+    const canonicalFamilyByChild = new Map<string, string>();
+    for (const person of people) {
+        const declared = (person.parentFamilies ?? []).filter((h) => familyMap.has(h));
+        const fallback = familiesContainingChild.get(person.handle) ?? [];
+        const candidates = declared.length > 0 ? declared : fallback;
+        if (candidates.length === 0) continue;
+
+        const ranked = [...new Set(candidates)]
+            .map((h) => {
+                const fam = familyMap.get(h)!;
+                const parentsCount = (fam.fatherHandle ? 1 : 0) + (fam.motherHandle ? 1 : 0);
+                const alreadyContains = fam.children.includes(person.handle) ? 1 : 0;
+                return { h, score: parentsCount * 10 + alreadyContains };
+            })
+            .sort((a, b) => (b.score - a.score) || a.h.localeCompare(b.h));
+
+        canonicalFamilyByChild.set(person.handle, ranked[0].h);
+    }
+
+    return families.map((fam) => {
+        const seen = new Set<string>();
+        const children = fam.children.filter((ch) => {
+            if (seen.has(ch)) return false;
+            seen.add(ch);
+            const child = personMap.get(ch);
+            if (!child) return false;
+            const canonical = canonicalFamilyByChild.get(ch);
+            return canonical ? canonical === fam.handle : true;
+        });
+
+        // If canonical mapping points to this family but stale `children` missed it, render it here.
+        for (const [childHandle, canonicalFamily] of canonicalFamilyByChild.entries()) {
+            if (canonicalFamily !== fam.handle) continue;
+            if (!children.includes(childHandle)) children.push(childHandle);
+        }
+
+        return { ...fam, children };
+    });
+}
+
 // === Main layout ===
 
 export function computeLayout(people: TreeNode[], families: TreeFamily[]): LayoutResult {
+    const normalizedFamilies = normalizeFamiliesByParentLinks(people, families);
     const personMap = new Map(people.map(p => [p.handle, p]));
-    const familyMap = new Map(families.map(f => [f.handle, f]));
+    const familyMap = new Map(normalizedFamilies.map(f => [f.handle, f]));
 
-    const gens = assignGenerations(people, families);
+    const gens = assignGenerations(people, normalizedFamilies);
 
     const childOfAnyFamily = new Set<string>();
-    for (const f of families) {
+    for (const f of normalizedFamilies) {
         for (const ch of f.children) childOfAnyFamily.add(ch);
     }
-    const rootFamilies = families.filter((f) => {
+    const rootFamilies = normalizedFamilies.filter((f) => {
         const hasFather = !!f.fatherHandle;
         const hasMother = !!f.motherHandle;
         const fatherIsRoot = !hasFather || !childOfAnyFamily.has(f.fatherHandle!);
@@ -757,19 +815,19 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
         }
     }
 
-    snapDirectCouples(allNodes, families, gens, personMap);
-    resolveGenerationOverlaps(allNodes, families);
-    realignChildrenToCoupleHeart(allNodes, families);
+    snapDirectCouples(allNodes, normalizedFamilies, gens, personMap);
+    resolveGenerationOverlaps(allNodes, normalizedFamilies);
+    realignChildrenToCoupleHeart(allNodes, normalizedFamilies);
     // Realign can reintroduce row overlaps; sweep again, then snap couples to canonical spacing.
-    resolveGenerationOverlaps(allNodes, families);
-    snapDirectCouples(allNodes, families, gens, personMap);
+    resolveGenerationOverlaps(allNodes, normalizedFamilies);
+    snapDirectCouples(allNodes, normalizedFamilies, gens, personMap);
 
     // Compute strictly orthogonal connections
     const nodeMap = new Map(allNodes.map(n => [n.node.handle, n]));
     const connections: Connection[] = [];
     const couples: PositionedCouple[] = [];
 
-    for (const fam of families) {
+    for (const fam of normalizedFamilies) {
         const fatherNode = fam.fatherHandle ? nodeMap.get(fam.fatherHandle) : undefined;
         const motherNode = fam.motherHandle ? nodeMap.get(fam.motherHandle) : undefined;
         if (!fatherNode && !motherNode) continue;

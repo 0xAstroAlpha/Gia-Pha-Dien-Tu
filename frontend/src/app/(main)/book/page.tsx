@@ -49,6 +49,7 @@ const THEMES: Record<string, Theme> = {
 };
 
 type ThemeKey = keyof typeof THEMES;
+const BOOK_FAMILY_NAME = 'Đỗ Văn';
 
 export default function BookPage() {
     const [bookData, setBookData] = useState<BookData | null>(null);
@@ -79,8 +80,7 @@ export default function BookPage() {
                     return;
                 }
 
-                const familyName = people[0].displayName?.split(' ').slice(0, 2).join(' ') || 'Dòng Họ';
-                const data = generateBookData(people, families, familyName);
+                const data = generateBookData(people, families, BOOK_FAMILY_NAME);
                 setBookData(data);
             } catch {
                 setBookData(null);

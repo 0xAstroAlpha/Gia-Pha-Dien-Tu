@@ -16,6 +16,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { PersonFormDialog, type PersonFormPerson } from '@/components/person-form-dialog';
+import { useAuth } from '@/components/auth-provider';
 
 interface Person extends PersonFormPerson {
     _privacyNote?: string;
@@ -23,6 +24,7 @@ interface Person extends PersonFormPerson {
 
 export default function PeopleListPage() {
     const router = useRouter();
+    const { isLoggedIn } = useAuth();
     const [people, setPeople] = useState<Person[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -95,10 +97,12 @@ export default function PeopleListPage() {
                     </h1>
                     <p className="text-muted-foreground">{people.length} người trong gia phả</p>
                 </div>
-                <Button onClick={openCreateModal} className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Tạo thành viên
-                </Button>
+                {isLoggedIn && (
+                    <Button onClick={openCreateModal} className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Tạo thành viên
+                    </Button>
+                )}
             </div>
 
             <div className="flex flex-wrap gap-3 items-center">
@@ -160,15 +164,17 @@ export default function PeopleListPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="gap-2"
-                                                onClick={(e) => { e.stopPropagation(); openEditModal(p.handle); }}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                                Sửa
-                                            </Button>
+                                            {isLoggedIn && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-2"
+                                                    onClick={(e) => { e.stopPropagation(); openEditModal(p.handle); }}
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                    Sửa
+                                                </Button>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -177,7 +183,7 @@ export default function PeopleListPage() {
                                         <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                                             <div className="flex flex-col items-center gap-3">
                                                 <span>{search ? 'Không tìm thấy kết quả' : 'Chưa có dữ liệu gia phả'}</span>
-                                                {!search && (
+                                                {!search && isLoggedIn && (
                                                     <Button onClick={openCreateModal} className="gap-2">
                                                         <Plus className="h-4 w-4" />
                                                         Tạo thành viên đầu tiên

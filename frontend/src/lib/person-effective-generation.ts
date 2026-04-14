@@ -17,6 +17,7 @@ function parseGeneration(raw: unknown): number | undefined {
 }
 
 type FamRow = {
+    handle?: string;
     father_handle: string | null;
     mother_handle: string | null;
     children: string[] | null;
@@ -55,7 +56,24 @@ async function resolveBirthParents(
 export async function getEffectiveGeneration(personHandle: string): Promise<number | undefined> {
     const { supabase } = await import('@/lib/supabase');
     const cache = new Map<string, number | undefined>();
+    const spouseCache = new Map<string, string[]>();
     const visiting = new Set<string>();
+
+    async function getSpouseHandles(h: string): Promise<string[]> {
+        if (spouseCache.has(h)) return spouseCache.get(h) ?? [];
+        const { data: families } = await supabase
+            .from('families')
+            .select('father_handle, mother_handle')
+            .or(`father_handle.eq.${h},mother_handle.eq.${h}`);
+        const out = new Set<string>();
+        for (const row of (families ?? []) as FamRow[]) {
+            if (row.father_handle === h && row.mother_handle) out.add(row.mother_handle);
+            if (row.mother_handle === h && row.father_handle) out.add(row.father_handle);
+        }
+        const list = [...out];
+        spouseCache.set(h, list);
+        return list;
+    }
 
     async function inner(h: string): Promise<number | undefined> {
         if (cache.has(h)) return cache.get(h);
@@ -103,5 +121,23 @@ export async function getEffectiveGeneration(personHandle: string): Promise<numb
         }
     }
 
-    return inner(personHandle);
+    const spouseGroup = new Set<string>();
+    const queue: string[] = [personHandle];
+    while (queue.length > 0) {
+        const current = queue.shift() as string;
+        if (spouseGroup.has(current)) continue;
+        spouseGroup.add(current);
+        const spouses = await getSpouseHandles(current);
+        for (const s of spouses) {
+            if (!spouseGroup.has(s)) queue.push(s);
+        }
+    }
+
+    let maxGen: number | undefined;
+    for (const h of spouseGroup) {
+        const gen = await inner(h);
+        if (gen == null) continue;
+        maxGen = maxGen == null ? gen : Math.max(maxGen, gen);
+    }
+    return maxGen;
 }
