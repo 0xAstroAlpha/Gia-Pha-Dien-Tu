@@ -139,7 +139,7 @@ export function generateBookData(
         if (!generations.has(p.handle)) generations.set(p.handle, 0);
     }
 
-    // Normalize from parent links in families: each child should be min(parentGen)+1.
+    // Normalize from parent links in families: each child should be max(parentGen)+1.
     // This avoids stale generations when person.families / parent_families arrays drift.
     let changed = true;
     while (changed) {
@@ -147,14 +147,14 @@ export function generateBookData(
         for (const p of people) {
             const parentFams = parentFamiliesByChild.get(p.handle) ?? [];
             if (parentFams.length === 0) continue;
-            let expectedGen = Number.POSITIVE_INFINITY;
+            let expectedGen = Number.NEGATIVE_INFINITY;
             for (const fam of parentFams) {
                 const parentGens: number[] = [];
                 if (fam.fatherHandle && generations.has(fam.fatherHandle)) parentGens.push(generations.get(fam.fatherHandle)!);
                 if (fam.motherHandle && generations.has(fam.motherHandle)) parentGens.push(generations.get(fam.motherHandle)!);
                 if (parentGens.length === 0) continue;
-                const famExpected = Math.min(...parentGens) + 1;
-                if (famExpected < expectedGen) expectedGen = famExpected;
+                const famExpected = Math.max(...parentGens) + 1;
+                if (famExpected > expectedGen) expectedGen = famExpected;
             }
             if (!Number.isFinite(expectedGen)) continue;
             const current = generations.get(p.handle) ?? 0;
